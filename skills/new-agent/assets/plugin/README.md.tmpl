@@ -1,0 +1,35 @@
+# ${name}
+
+${description}
+
+## Install
+
+```text
+/plugin marketplace add <owner>/${name}
+/plugin install ${name}@${name}
+```
+
+Try it locally without installing:
+
+```bash
+claude --plugin-dir .
+```
+
+## Agents
+
+| agent | model | effort | what it does |
+| --- | --- | --- | --- |
+${agent_rows}
+
+Launch one explicitly with `@agent-${name}:<agent>`, or let Claude delegate by
+description.
+
+## Develop
+
+```bash
+claude plugin validate .
+```
+
+## License
+
+MIT

@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.venv/
+node_modules/
+.DS_Store
+Thumbs.db
+.env
+.env.*
+!.env.example
+
+# scratch output from local runs and claude plugin eval
+.scratch/
+results/

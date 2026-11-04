@@ -1,0 +1,29 @@
+{
+  "name": "review",
+  "summary": "Review a diff, PR or whole codebase through several lenses and keep only findings that survive a check",
+  "match": ["review", "audit", "check this PR", "find bugs", "security review", "is this safe"],
+  "steps": [
+    {
+      "id": "map",
+      "kind": "locate",
+      "goal": "List the changed files (or the areas of the codebase) and group them for review",
+      "verify": "the groups cover every changed file",
+      "after": []
+    },
+    {
+      "id": "lens",
+      "kind": "review",
+      "goal": "Review one group or one lens (correctness, security, performance, tests) and report findings with file:line",
+      "verify": "each finding names a trigger",
+      "after": ["map"],
+      "fan_out": "one subtask per lens or file group, ids lens-<name>; raise security lenses to opus"
+    },
+    {
+      "id": "verify",
+      "kind": "verify",
+      "goal": "Try to reproduce each critical and high finding; lower or drop the ones that do not hold",
+      "verify": "a verdict per finding with the command",
+      "after": ["lens"]
+    }
+  ]
+}

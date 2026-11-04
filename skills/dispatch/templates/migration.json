@@ -1,0 +1,36 @@
+{
+  "name": "migration",
+  "summary": "Apply the same change across many files: prove it on one, then fan out the recipe",
+  "match": ["migrate", "upgrade", "convert", "port", "every file", "all components", "across the repo"],
+  "steps": [
+    {
+      "id": "map",
+      "kind": "locate",
+      "goal": "List every unit to migrate and count them",
+      "verify": "recount the units with a second command",
+      "after": []
+    },
+    {
+      "id": "pilot",
+      "kind": "implement",
+      "goal": "Migrate one representative unit and write the recipe as exact steps another agent can repeat",
+      "verify": "the pilot unit builds and its tests pass",
+      "after": ["map"]
+    },
+    {
+      "id": "batch",
+      "kind": "mechanical",
+      "goal": "Apply the pilot's recipe to one batch of units",
+      "verify": "the batch's own check from the recipe",
+      "after": ["pilot"],
+      "fan_out": "one subtask per batch of units, ids batch-<n>; raise to implement for units the recipe does not fit"
+    },
+    {
+      "id": "verify",
+      "kind": "verify",
+      "goal": "Count migrated units against the map and run the project check once",
+      "verify": "N of N units migrated and the check passes",
+      "after": ["batch"]
+    }
+  ]
+}

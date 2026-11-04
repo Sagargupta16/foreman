@@ -1,0 +1,20 @@
+{
+  "name": "foreman",
+  "owner": {
+    "name": "Sagar Gupta",
+    "url": "https://github.com/Sagargupta16"
+  },
+  "metadata": {
+    "description": "One plugin that splits a task into subtasks, routes each to a predefined agent on the right model, and scaffolds new agents and agent plugins."
+  },
+  "plugins": [
+    {
+      "name": "foreman",
+      "source": "./",
+      "description": "2 skills (dispatch, new-agent), 9 agent types with per-kind model and effort defaults, 7 task templates, a plan checker and an agent-file linter.",
+      "version": "0.1.0",
+      "license": "MIT",
+      "category": "productivity"
+    }
+  ]
+}

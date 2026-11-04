@@ -1,0 +1,36 @@
+{
+  "name": "bugfix",
+  "summary": "Find the root cause of a failure and fix it",
+  "match": ["fix", "bug", "error", "fails", "broken", "crash", "regression", "why does"],
+  "steps": [
+    {
+      "id": "map",
+      "kind": "locate",
+      "goal": "Find the code path, recent commits and tests around the failing behavior",
+      "verify": "the listed paths contain the symbols named in the error",
+      "after": [],
+      "skip_when": "the error already names the file and line"
+    },
+    {
+      "id": "diagnose",
+      "kind": "debug",
+      "goal": "Reproduce the failure, find the root cause, and name the fix and the files it touches",
+      "verify": "the repro command fails as reported and the cause explains the first real error line",
+      "after": ["map"]
+    },
+    {
+      "id": "fix",
+      "kind": "implement",
+      "goal": "Apply the fix from the diagnosis, plus a regression test when the area has tests",
+      "verify": "the repro command from the diagnosis now passes",
+      "after": ["diagnose"]
+    },
+    {
+      "id": "verify",
+      "kind": "verify",
+      "goal": "Rerun the original repro and the regression test independently",
+      "verify": "confirmed or refuted with the command output",
+      "after": ["fix"]
+    }
+  ]
+}

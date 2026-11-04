@@ -1,0 +1,35 @@
+---
+name: ${name}
+description: >-
+${description}
+argument-hint: "[task]"
+---
+
+# ${name}
+
+Task: $$ARGUMENTS
+
+<<fill: one paragraph on when this skill runs its agents and what the user
+gets back>>
+
+## Procedure
+
+1. Decide whether the task needs the agents at all. One small change: do it
+   inline and say so.
+2. Launch the agents below with the Agent tool, one call each, in one
+   message when they do not depend on each other. Always set
+   `subagent_type` and `model`.
+
+| step | subagent_type | model | brief |
+| --- | --- | --- | --- |
+${agent_rows}
+
+3. Read each agent's return block. Check that changed files are the ones the
+   brief allowed, and rerun the cited verify command when it is cheap.
+4. Report what each agent did, how you checked it, and what is open.
+
+## Must not
+
+- Launch an agent without `model`, or two agents that edit the same file at
+  once.
+- Accept an agent's "done" without reading the diff or the evidence.

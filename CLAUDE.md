@@ -1,0 +1,70 @@
+# CLAUDE.md
+
+> This file stacks on top of the workspace root at `C:\Code\GitHub\`:
+> - Root [`CLAUDE.md`](../../CLAUDE.md) -- voice, rules, routing map, references, skills, slash commands, conventions.
+> - Root [`MEMORY.md`](../../MEMORY.md) -- live facts across repos.
+> - Root [`STATUS.md`](../../STATUS.md) -- live PR/CI/security dashboard.
+> - [`.claude/resources/`](../../.claude/resources/README.md) -- deep reference for collaboration, workflow, git, OSS, debugging, voice.
+>
+> Read those first. The guidance below only adds **repo-specific context** -- it does not override anything in the root.
+
+## Project
+
+Claude Code plugin (`foreman`) that splits a task into subtasks, routes each to a predefined agent type and picks the model (haiku, sonnet, opus) by the kind of work, then runs the subtasks in dependency waves and verifies once. A second skill scaffolds new agents and agent plugins and lints agent files. Private repo for now; written as if public.
+
+Install: `/plugin marketplace add Sagargupta16/foreman` then `/plugin install foreman@foreman`, or `claude --plugin-dir .` from a clone.
+
+## Stack
+
+- **Language**: Python 3.12+ standard library (plan checker, scaffolder, repo gate)
+- **Framework**: none at runtime; Markdown skills and agents, JSON routing and templates
+- **Package manager**: none required; `pip install -r requirements-dev.txt` for ruff
+- **Deploy target**: GitHub repo as its own plugin marketplace (`.claude-plugin/marketplace.json`, `source: "./"`)
+
+## Run
+
+```
+python skills/dispatch/scripts/plan.py templates
+python skills/dispatch/scripts/plan.py routes
+python skills/dispatch/scripts/plan.py new feature --task "..."
+python skills/dispatch/scripts/plan.py check examples/feature-plan.json
+python skills/new-agent/scripts/scaffold.py agent NAME --kind review --dest .scratch/agents
+python skills/new-agent/scripts/scaffold.py plugin NAME --dest .scratch/NAME --agent a:implement --skill
+python skills/new-agent/scripts/scaffold.py lint agents
+```
+
+## Test
+
+```
+python scripts/check.py
+ruff check .
+ruff format --check .
+npx -y @sagargupta1610/skillcheck@0.2.5 lint skills
+claude plugin validate .
+```
+
+## Entry points
+
+- `skills/dispatch/SKILL.md` -- the foreman procedure (`/foreman:dispatch`)
+- `skills/dispatch/routing.json` -- kind to agent, model, effort, tool profile; the one source of truth
+- `skills/dispatch/templates/*.json` -- task templates
+- `skills/dispatch/scripts/plan.py` -- plan checker (FM001-FM014)
+- `skills/new-agent/SKILL.md` -- agent and plugin scaffolding (`/foreman:new-agent`)
+- `skills/new-agent/scripts/scaffold.py` -- agent, plugin, register, lint (FA001-FA010)
+- `agents/*.md` -- the nine agent types
+
+## Gotchas
+
+- An agent's `model`, `effort` and `tools` must equal its routing.json kind and profile; `scripts/check.py` (FC009) fails otherwise. Change routing.json and the agent file together.
+- Plugin agents ignore `permissionMode`, `hooks`, `mcpServers` and `initialPrompt`; `claude plugin validate` does not warn about them (measured 2.1.312), `scaffold.py lint` does (FA005).
+- The Agent tool's per-call `model` beats the agent file's `model`; dispatch relies on that to route per subtask.
+- `claude plugin validate .` warns that this CLAUDE.md is not loaded as plugin context. Expected: it is for repo sessions, not plugin users.
+- Templates under `skills/new-agent/assets/` use `string.Template` (`${name}`); a literal `$` must be `$$`.
+- Live test runs (`claude -p --plugin-dir .`) need the demo repo OUTSIDE this folder: files under a loaded plugin dir count as sensitive, so every agent edit there is denied in `-p` mode (2026-11-04). The 2026-11-04 run used a two-package demo repo at `C:/Code/worktrees/foreman-demo` (4 haiku subtasks, 4/4 verified, 0.92 USD, 0.90 of it the Opus main session). From the Desktop app, `claude -p` has to run in a terminal tab (Desktop-managed Bedrock credentials refuse a Bash child).
+
+## Repo-specific rules
+
+- Written for public release: no personal names in skill or agent bodies ("the user"), no home paths. Author and owner fields are the exception.
+- Skill frontmatter: `name` equals the folder, `description` is a `>-` block with "Use when" triggers and no unquoted `: `.
+- Every PR updates CHANGELOG.md under a concrete version and bumps both manifests when it releases.
+- No en or em dashes anywhere; `scripts/check.py` fails on them.

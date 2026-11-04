@@ -1,0 +1,37 @@
+{
+  "name": "refactor",
+  "summary": "Restructure code without changing behavior",
+  "match": ["refactor", "clean up", "simplify", "extract", "split", "rename", "reorganize", "dedupe"],
+  "steps": [
+    {
+      "id": "map",
+      "kind": "locate",
+      "goal": "List every definition and use of the code being restructured, with counts",
+      "verify": "recount the uses with a second search pattern",
+      "after": []
+    },
+    {
+      "id": "design",
+      "kind": "design",
+      "goal": "Write the target structure and split the moves into lanes; a lane that removes a shared name runs after every lane that still uses it",
+      "verify": "lanes own disjoint files and the order handles every shared name",
+      "after": ["map"],
+      "skip_when": "the refactor is a pure rename the user spelled out"
+    },
+    {
+      "id": "apply",
+      "kind": "implement",
+      "goal": "Apply one lane of the refactor with no behavior change",
+      "verify": "the tests that cover the lane's files pass",
+      "after": ["design"],
+      "fan_out": "one subtask per lane, ids apply-<lane>; use kind mechanical with the exact old and new text for pure renames"
+    },
+    {
+      "id": "verify",
+      "kind": "verify",
+      "goal": "Confirm no behavior changed: old names gone, new names resolve, tests pass",
+      "verify": "a search for each removed name prints nothing and the test command passes",
+      "after": ["apply"]
+    }
+  ]
+}

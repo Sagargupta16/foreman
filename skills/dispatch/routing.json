@@ -1,0 +1,85 @@
+{
+  "ladder": ["haiku", "sonnet", "opus"],
+  "models": ["haiku", "sonnet", "opus", "fable"],
+  "efforts": ["low", "medium", "high", "xhigh", "max"],
+  "max_wave": 10,
+  "profiles": {
+    "read": "Read, Grep, Glob, Bash",
+    "research": "Read, Grep, Glob, Bash, WebFetch, WebSearch",
+    "edit": "Read, Grep, Glob, Bash, Edit, Write"
+  },
+  "kinds": {
+    "locate": {
+      "agent": "foreman:scout",
+      "model": "haiku",
+      "effort": "low",
+      "profile": "read",
+      "writes": false,
+      "what": "find files, list call sites, count matches, map what a change touches"
+    },
+    "mechanical": {
+      "agent": "foreman:mechanic",
+      "model": "haiku",
+      "effort": "low",
+      "profile": "edit",
+      "writes": true,
+      "what": "edits and commands the brief spells out exactly: renames, version bumps, find and replace, a recipe applied per file"
+    },
+    "research": {
+      "agent": "foreman:researcher",
+      "model": "sonnet",
+      "effort": "medium",
+      "profile": "research",
+      "writes": false,
+      "what": "read docs, APIs, changelogs and web pages, return cited rows"
+    },
+    "implement": {
+      "agent": "foreman:builder",
+      "model": "sonnet",
+      "effort": "medium",
+      "profile": "edit",
+      "writes": true,
+      "what": "a specified code change in the files it owns, tests included when the goal asks"
+    },
+    "document": {
+      "agent": "foreman:writer",
+      "model": "sonnet",
+      "effort": "medium",
+      "profile": "edit",
+      "writes": true,
+      "what": "README, docs pages, changelog entries, comments and release notes, checked against the code"
+    },
+    "review": {
+      "agent": "foreman:reviewer",
+      "model": "sonnet",
+      "effort": "high",
+      "profile": "read",
+      "writes": false,
+      "what": "read a diff or a set of files and report findings with file:line evidence"
+    },
+    "verify": {
+      "agent": "foreman:verifier",
+      "model": "sonnet",
+      "effort": "medium",
+      "profile": "read",
+      "writes": false,
+      "what": "reproduce a claim or run the check with its own command, report confirmed or refuted with output"
+    },
+    "design": {
+      "agent": "foreman:architect",
+      "model": "opus",
+      "effort": "high",
+      "profile": "read",
+      "writes": false,
+      "what": "plan a change, weigh tradeoffs, split work into lanes with disjoint files"
+    },
+    "debug": {
+      "agent": "foreman:debugger",
+      "model": "opus",
+      "effort": "high",
+      "profile": "read",
+      "writes": false,
+      "what": "reproduce a failure, find the root cause, name the fix and the files it touches"
+    }
+  }
+}

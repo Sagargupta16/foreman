@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Repo checks (dashes, secrets, home paths, frontmatter, links, manifests, agents, templates)
+        run: python scripts/check.py
+
+      - name: Example plan passes the plan checker
+        run: python skills/dispatch/scripts/plan.py check examples/feature-plan.json
+
+      - name: Install lint tools
+        run: pip install --only-binary :all: -r requirements-dev.txt
+
+      - name: Ruff lint
+        run: ruff check .
+
+      - name: Ruff format
+        run: ruff format --check .
+
+      - name: Lint skills (skillcheck)
+        run: npx -y @sagargupta1610/skillcheck@0.2.5 lint skills

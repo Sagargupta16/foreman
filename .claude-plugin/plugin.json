@@ -1,0 +1,13 @@
+{
+  "name": "foreman",
+  "version": "0.1.0",
+  "description": "Split any task into subtasks, hand each one to a predefined agent type and pick Haiku, Sonnet or Opus for it by the kind of work. Nine agents (scout, mechanic, researcher, builder, writer, reviewer, verifier, architect, debugger), seven task templates (feature, bugfix, refactor, migration, research, review, docs), a plan checker that catches overlapping file ownership and unjustified model picks before any agent starts, and a scaffolder for new agents and agent plugins.",
+  "author": {
+    "name": "Sagar Gupta",
+    "url": "https://github.com/Sagargupta16"
+  },
+  "homepage": "https://github.com/Sagargupta16/foreman",
+  "repository": "https://github.com/Sagargupta16/foreman",
+  "license": "MIT",
+  "keywords": ["agents", "subagents", "orchestration", "delegation", "model-routing", "planning", "scaffold"]
+}

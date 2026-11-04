@@ -1,0 +1,22 @@
+{
+  "name": "research",
+  "summary": "Answer a question that spans several sources, products or subtopics",
+  "match": ["research", "compare", "find out", "look up", "which is better", "what are the options", "prior art"],
+  "steps": [
+    {
+      "id": "lane",
+      "kind": "research",
+      "goal": "Answer one sub-question from primary sources with cited rows",
+      "verify": "open two cited URLs and confirm they say what the rows say",
+      "after": [],
+      "fan_out": "one subtask per sub-question or source family, ids lane-<topic>"
+    },
+    {
+      "id": "verify",
+      "kind": "verify",
+      "goal": "Recheck every load-bearing or surprising claim (versions, limits, prices, defaults) against its source",
+      "verify": "a verdict per claim",
+      "after": ["lane"]
+    }
+  ]
+}

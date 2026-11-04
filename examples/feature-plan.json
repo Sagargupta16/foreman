@@ -1,0 +1,55 @@
+{
+  "task": "Add CSV export to the users API and a download button on the users page",
+  "template": "feature",
+  "subtasks": [
+    {
+      "id": "map",
+      "kind": "locate",
+      "goal": "List the users route, its handler, the users page component and their tests",
+      "reads": ["src/api/", "web/src/pages/"],
+      "after": [],
+      "verify": "open the handler and the page and confirm they are the users ones"
+    },
+    {
+      "id": "build-api",
+      "kind": "implement",
+      "goal": "Add GET /users/export returning text/csv with id, name, email, created_at",
+      "owns": ["src/api/users.ts", "tests/api/users-export.test.ts"],
+      "reads": ["src/api/index.ts", "src/db/users.ts"],
+      "after": ["map"],
+      "verify": "npm test -- tests/api/users-export.test.ts passes"
+    },
+    {
+      "id": "build-ui",
+      "kind": "implement",
+      "goal": "Add a Download CSV button to the users page that calls GET /users/export",
+      "owns": ["web/src/pages/users/**"],
+      "reads": ["web/src/api/client.ts"],
+      "after": ["map"],
+      "verify": "the users page renders with the button and the click requests /users/export"
+    },
+    {
+      "id": "docs",
+      "kind": "mechanical",
+      "goal": "Add one changelog line under 1.4.0: users can export the user list as CSV",
+      "owns": ["CHANGELOG.md"],
+      "after": ["build"],
+      "verify": "git diff CHANGELOG.md shows exactly one added line",
+      "why": "a one-line changelog entry with the exact text needs no writer"
+    },
+    {
+      "id": "review",
+      "kind": "review",
+      "goal": "Review the combined diff for correctness and for leaking columns other than the four named",
+      "after": ["build"],
+      "verify": "each finding names file:line and a trigger"
+    },
+    {
+      "id": "verify",
+      "kind": "verify",
+      "goal": "Rerun both build lanes' verify commands independently",
+      "after": ["build"],
+      "verify": "a verdict per claim with the command output"
+    }
+  ]
+}

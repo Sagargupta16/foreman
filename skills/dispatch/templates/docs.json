@@ -1,0 +1,29 @@
+{
+  "name": "docs",
+  "summary": "Bring documentation in line with the code",
+  "match": ["docs", "readme", "changelog", "document", "update the docs", "out of date"],
+  "steps": [
+    {
+      "id": "map",
+      "kind": "locate",
+      "goal": "List every doc surface and the commands, paths, flags and env vars each one claims",
+      "verify": "the list covers README, docs folder and changelog",
+      "after": []
+    },
+    {
+      "id": "write",
+      "kind": "document",
+      "goal": "Fix one doc surface so every claim matches the code",
+      "verify": "every command in the surface runs and every relative link resolves",
+      "after": ["map"],
+      "fan_out": "one subtask per doc file or folder, ids write-<surface>"
+    },
+    {
+      "id": "verify",
+      "kind": "verify",
+      "goal": "Run each command the updated docs show and check each claimed default against the code",
+      "verify": "a verdict per claim",
+      "after": ["write"]
+    }
+  ]
+}

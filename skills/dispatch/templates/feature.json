@@ -1,0 +1,52 @@
+{
+  "name": "feature",
+  "summary": "Add a feature or behavior to an existing codebase",
+  "match": ["add", "implement", "build", "support", "new endpoint", "new page", "new command", "new option"],
+  "steps": [
+    {
+      "id": "map",
+      "kind": "locate",
+      "goal": "List the entry points, modules, tests and config the feature touches, with one line per path",
+      "verify": "open three of the listed paths and confirm they are what the map says",
+      "after": []
+    },
+    {
+      "id": "design",
+      "kind": "design",
+      "goal": "Pick the approach and split the change into lanes with disjoint owns, interfaces and one verify check per lane",
+      "verify": "every lane owns files no other lane owns, and every path in the map is covered or ruled out",
+      "after": ["map"],
+      "skip_when": "the change fits in one lane or the user already gave the design"
+    },
+    {
+      "id": "build",
+      "kind": "implement",
+      "goal": "Implement one lane of the design",
+      "verify": "the lane's verify check from the design",
+      "after": ["design"],
+      "fan_out": "one subtask per lane in the design, ids build-<lane>"
+    },
+    {
+      "id": "docs",
+      "kind": "document",
+      "goal": "Update the README, docs and changelog for the new behavior",
+      "verify": "every command and flag in the new text runs or exists in the code",
+      "after": ["build"],
+      "skip_when": "nothing user-facing changed"
+    },
+    {
+      "id": "review",
+      "kind": "review",
+      "goal": "Review the combined diff for correctness against the task",
+      "verify": "each finding has file:line and a trigger",
+      "after": ["build"]
+    },
+    {
+      "id": "verify",
+      "kind": "verify",
+      "goal": "Reproduce each build lane's verified claim with an independent command",
+      "verify": "a verdict per claim with the command and its output",
+      "after": ["build"]
+    }
+  ]
+}
