@@ -27,7 +27,8 @@ jobs:
         run: python skills/dispatch/scripts/plan.py check examples/feature-plan.json
 
       - name: Install lint tools
-        run: pip install --only-binary :all: -r requirements-dev.txt
+        run: |
+          pip install --only-binary :all: -r requirements-dev.txt
 
       - name: Ruff lint
         run: ruff check .
