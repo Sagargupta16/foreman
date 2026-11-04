@@ -44,6 +44,7 @@ import datetime
 import fnmatch
 import json
 import os
+import re
 import statistics
 import sys
 import uuid
@@ -55,6 +56,7 @@ PLUGIN = SKILL.parent.parent
 GLOB = "*?["
 STATUSES = ("done", "partial", "blocked", "failed", "skipped", "inline")
 MIN_SAMPLES = 5  # stats gives no tune hint for a kind x model with fewer logged subtasks
+PLACEHOLDER = re.compile(r"__(?:META|TASK|SUBTASKS|WAVES|LADDER)__")
 
 
 def load_json(path: Path):
@@ -453,7 +455,7 @@ def cmd_log(project: Path, source: str, log_arg: str | None) -> int:
         stamp = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
         run = f"{stamp[:10]}-{uuid.uuid4().hex[:8]}"
         lines = log_lines(plan, load_routing(project), project, stamp, run)
-    except (OSError, json.JSONDecodeError, ValueError, AttributeError) as exc:
+    except (OSError, json.JSONDecodeError, ValueError, TypeError, AttributeError) as exc:
         print(f"cannot log plan: {exc}")
         return 1
     path = log_file(log_arg)
@@ -489,7 +491,8 @@ def tune_hints(groups: dict, routing: dict) -> list[str]:
         if model not in ladder:
             continue
         tier = ladder.index(model)
-        here = groups.get((kind, model), [])
+        # a skipped subtask never ran, so it says nothing about the model
+        here = [r for r in groups.get((kind, model), []) if r["status"] != "skipped"]
         if len(here) >= MIN_SAMPLES and tier + 1 < len(ladder):
             done = sum(r["status"] == "done" for r in here)
             moved = sum(r["final_model"] != r["model"] or r["attempts"] > 1 for r in here)
@@ -501,8 +504,15 @@ def tune_hints(groups: dict, routing: dict) -> list[str]:
                 continue
         if tier > 0:
             lower = ladder[tier - 1]
-            below = groups.get((kind, lower), [])
-            good = sum(r["status"] == "done" and r["verified"] for r in below)
+            below = [r for r in groups.get((kind, lower), []) if r["status"] != "skipped"]
+            # only first-try successes on the lower tier argue for it, not ones that escalated
+            good = sum(
+                r["status"] == "done"
+                and r["verified"]
+                and r["attempts"] == 1
+                and r["final_model"] == r["model"]
+                for r in below
+            )
             if len(below) >= MIN_SAMPLES and good / len(below) >= 0.9:
                 hints.append(
                     f"lower {kind} to {lower}: {good} of {len(below)} done and verified on {lower}"
@@ -608,18 +618,27 @@ async function run(s, wave) {
     return
   }
   let model = s.model
+  let tried = s.model
   let note = ''
   let attempts = 0
   let r = null
   while (model && attempts < 2) {
     attempts++
+    tried = model
     const opts = { label: attempts > 1 ? `${s.id} (${model})` : s.id, phase: `Wave ${wave}`,
       model, schema: RETURN }
     if (s.agent) opts.agentType = s.agent
     if (s.effort) opts.effort = s.effort
-    r = await agent(brief(s, note), opts)
+    try {
+      r = await agent(brief(s, note), opts)
+    } catch (e) {
+      // agent() throws when the return never matches the schema; treat it as a failed attempt
+      r = null
+      log(`${s.id}: agent call failed on ${model}: ${String(e).slice(0, 200)}`)
+    }
     // failure ladder: a failed or partial attempt goes one tier up, once; blocked needs the foreman
     if (r && !['failed', 'partial'].includes(r.status)) break
+    if (attempts >= 2) break
     const why = r ? `${r.status}, ${r.result.slice(0, 500)}` : 'no result'
     note = `attempt ${attempts} on ${model}: ${why}`
     model = up(model)
@@ -627,7 +646,7 @@ async function run(s, wave) {
   }
   const fallback = { id: s.id, status: 'failed', changed: [], result: 'no result',
     verified: 'not run', open: 'do it in the main session' }
-  results[s.id] = { ...(r || fallback), attempts, final_model: model || s.model }
+  results[s.id] = { ...(r || fallback), attempts, final_model: tried }
 }
 
 for (let w = 0; w < WAVES.length; w++) {
@@ -669,10 +688,8 @@ def compile_workflow(plan: dict, report: dict) -> str:
         "__WAVES__": json.dumps(report["waves"]),
         "__LADDER__": json.dumps(["haiku", "sonnet", "opus"]),
     }
-    script = WORKFLOW_JS
-    for key, value in values.items():
-        script = script.replace(key, value)
-    return script
+    # one pass over the template only, so placeholder-like text inside the plan stays text
+    return PLACEHOLDER.sub(lambda m: values[m.group(0)], WORKFLOW_JS)
 
 
 def cmd_workflow(project: Path, source: str, out: str | None) -> int:

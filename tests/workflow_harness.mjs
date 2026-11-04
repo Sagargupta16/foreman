@@ -1,9 +1,10 @@
 // Runs a script from `plan.py workflow` against mock Workflow globals, offline.
-// usage: node workflow_harness.mjs <script.js> [id-that-fails-once] [id-that-blocks]
-// prints JSON: every agent() call and each subtask's final status, attempts and model.
+// usage: node workflow_harness.mjs <script.js> [fails-once] [blocks] [fails-always] [throws]
+// each argument after the script is a subtask id ('' for none).
+// prints JSON: every agent() call, the log lines, and each subtask's final status, attempts and model.
 import { readFileSync } from 'node:fs'
 
-const [file, failOnce, blocks] = process.argv.slice(2)
+const [file, failOnce, blocks, failAlways, throws] = process.argv.slice(2)
 const body = readFileSync(file, 'utf8').replace('export const meta', 'const meta')
 const AsyncFunction = (async () => {}).constructor
 
@@ -24,8 +25,10 @@ async function agent(prompt, opts) {
     hasSchema: Boolean(opts.schema),
     retry: prompt.includes('\nretry:'),
   })
+  if (id === throws) throw new Error('mock API error')
   let status = 'done'
   if (id === failOnce && seen[id] === 1) status = 'failed'
+  if (id === failAlways) status = 'failed'
   if (id === blocks) status = 'blocked'
   return { id, status, changed: [], result: `mock ${status}`, verified: 'mock', open: 'none' }
 }

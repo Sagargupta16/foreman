@@ -357,12 +357,14 @@ def test_workflow_uses_no_clock_or_randomness(tmp_path):
     assert "new Date()" not in script
 
 
-def run_harness(script: Path, fail_once: str = "", blocks: str = "") -> dict:
+def run_harness(
+    script: Path, fail_once: str = "", blocks: str = "", fail_always: str = "", throws: str = ""
+) -> dict:
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is not installed")
     out = subprocess.run(
-        [node, str(HARNESS), str(script), fail_once, blocks],
+        [node, str(HARNESS), str(script), fail_once, blocks, fail_always, throws],
         capture_output=True,
         text=True,
         check=True,
@@ -397,3 +399,86 @@ def test_workflow_blocked_subtask_skips_its_dependents(tmp_path):
     assert len(result["calls"]) == 1
     assert result["statuses"]["map"]["status"] == "blocked"
     assert {result["statuses"][i]["status"] for i in ("build-api", "docs", "verify")} == {"skipped"}
+
+
+def test_workflow_two_failures_report_the_last_model(tmp_path):
+    result = run_harness(compile_example(tmp_path), fail_always="build-api")
+    tries = [c["model"] for c in result["calls"] if c["id"] == "build-api"]
+    assert tries == ["sonnet", "opus"]
+    assert result["statuses"]["build-api"] == {
+        "status": "failed",
+        "attempts": 2,
+        "final_model": "opus",
+    }
+
+
+def test_workflow_haiku_failing_twice_never_claims_opus(tmp_path):
+    result = run_harness(compile_example(tmp_path), fail_always="map")
+    assert result["statuses"]["map"]["final_model"] == "sonnet"
+    assert not any("retrying on opus" in line for line in result["logs"])
+
+
+def test_workflow_agent_error_counts_as_a_failed_attempt(tmp_path):
+    result = run_harness(compile_example(tmp_path), throws="map")
+    assert result["statuses"]["map"] == {"status": "failed", "attempts": 2, "final_model": "sonnet"}
+    assert result["statuses"]["build-api"]["status"] == "skipped"
+
+
+def test_workflow_keeps_placeholder_text_from_the_plan(tmp_path):
+    # Arrange
+    example = json.loads(EXAMPLE.read_text(encoding="utf-8"))
+    example["task"] = 'rename __WAVES__ and __TASK__ in plan.py, "quoted"'
+    example["subtasks"][0]["goal"] = "find every __LADDER__ and __SUBTASKS__ use"
+    source = tmp_path / "plan.json"
+    source.write_text(json.dumps(example), encoding="utf-8")
+    out = tmp_path / "wf.js"
+    # Act
+    plan.main(["--project", str(ROOT), "workflow", str(source), "--out", str(out)])
+    result = run_harness(out)
+    # Assert
+    assert 'const TASK = "rename __WAVES__ and __TASK__ in plan.py, \\"quoted\\""' in out.read_text(
+        encoding="utf-8"
+    )
+    assert len(result["calls"]) == 6
+
+
+def escalated_on_haiku(tmp_path: Path, count: int) -> Path:
+    """Log `count` implement subtasks routed down to haiku that only finished on sonnet."""
+    log = tmp_path / "runs.jsonl"
+    source = tmp_path / "plan.json"
+    record = sub(
+        "a",
+        kind="implement",
+        owns=["a.py"],
+        model="haiku",
+        why="t",
+        status="done",
+        verified=True,
+        attempts=2,
+        final_model="sonnet",
+    )
+    source.write_text(json.dumps({"subtasks": [record, sub("b", status="done")]}), "utf-8")
+    for _ in range(count):
+        plan.main(["--project", str(tmp_path), "log", str(source), "--log", str(log)])
+    return log
+
+
+def test_stats_lower_hint_ignores_escalated_successes(tmp_path, capsys):
+    log = escalated_on_haiku(tmp_path, 5)
+    capsys.readouterr()
+    plan.main(["--project", str(tmp_path), "stats", "--log", str(log)])
+    assert "lower implement" not in capsys.readouterr().out
+
+
+def test_stats_skipped_subtasks_do_not_raise_a_route(tmp_path, capsys):
+    log = log_runs(tmp_path, 5, status_b="skipped")
+    capsys.readouterr()
+    plan.main(["--project", str(tmp_path), "stats", "--log", str(log)])
+    assert "raise mechanical" not in capsys.readouterr().out
+
+
+def test_log_rejects_a_non_numeric_attempts_value(tmp_path):
+    source = tmp_path / "plan.json"
+    source.write_text(json.dumps({"subtasks": [sub("a", status="done", attempts=None)]}), "utf-8")
+    code = plan.main(["log", str(source), "--log", str(tmp_path / "runs.jsonl")])
+    assert code == 1

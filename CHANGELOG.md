@@ -22,6 +22,12 @@
 - Evals: `claude plugin eval` cases for dispatch and new-agent.
 - Fix: `scaffold.py plugin` checks every `--agent` name and kind before
   writing, so a bad kind no longer leaves a half-written plugin.
+- Compiled Workflows: `final_model` is the model of the last attempt (it
+  named a model that never ran after two failures), an `agent()` call that
+  throws counts as a failed attempt instead of ending the run, and plan text
+  that looks like a template placeholder (`__TASK__`) stays text.
+- Tune hints: the "lower" hint counts only first-try successes on the lower
+  tier, and skipped subtasks no longer count against a model.
 - `check.py` skips `.archify/` and eval `results/`; CI runs pytest.
 
 ## [0.1.0] - 2026-11-04
