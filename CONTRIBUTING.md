@@ -18,6 +18,7 @@ The scripts use the Python 3.12+ standard library only.
 
 ```bash
 python scripts/check.py
+python -m pytest -q
 python skills/dispatch/scripts/plan.py check examples/feature-plan.json
 ruff check .
 ruff format --check .

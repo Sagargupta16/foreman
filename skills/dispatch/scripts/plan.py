@@ -1,10 +1,18 @@
 #!/usr/bin/env python3
-"""foreman plan tool: list templates and routes, start a plan from a template, check a plan.
+"""foreman plan tool: templates and routes, start and check a plan, log runs, compile Workflows.
 
   plan.py templates [--project DIR]
   plan.py routes [--project DIR]
   plan.py new TEMPLATE --task "the user's words" [--project DIR]
   plan.py check PLAN.json|- [--project DIR] [--json]
+  plan.py log PLAN.json|- [--log FILE]          plan with results -> one line per subtask
+  plan.py stats [--log FILE] [--all]            success per kind x model, with tune hints
+  plan.py workflow PLAN.json|- [--out FILE]     checked plan -> Workflow script
+
+The run log defaults to $FOREMAN_LOG, else ~/.claude/foreman/runs.jsonl. For `log`, each
+subtask carries its outcome: status (done, partial, blocked, failed, skipped, inline),
+attempts (default 1), final_model (default: model), verified (true when the foreman checked
+it), and optional tokens and duration_ms.
 
 check rules (E = error, exit 1; W = warning):
   FM001 E plan is not a JSON object with a non-empty subtasks list
@@ -32,15 +40,21 @@ defaults, "max_wave") and <project>/.claude/foreman/templates/*.json (same name 
 from __future__ import annotations
 
 import argparse
+import datetime
 import fnmatch
 import json
+import os
+import statistics
 import sys
-from collections import Counter
+import uuid
+from collections import Counter, defaultdict
 from pathlib import Path
 
 SKILL = Path(__file__).resolve().parent.parent
 PLUGIN = SKILL.parent.parent
 GLOB = "*?["
+STATUSES = ("done", "partial", "blocked", "failed", "skipped", "inline")
+MIN_SAMPLES = 5  # stats gives no tune hint for a kind x model with fewer logged subtasks
 
 
 def load_json(path: Path):
@@ -290,7 +304,7 @@ def chain(template: dict) -> str:
 def cell(value) -> str:
     if isinstance(value, list):
         value = ", ".join(value)
-    return str(value or "-").replace("|", "/")
+    return "-" if value in (None, "") else str(value).replace("|", "/")
 
 
 def table(rows: list[list], head: list[str]) -> str:
@@ -389,6 +403,300 @@ def cmd_check(project: Path, source: str, as_json: bool) -> int:
     return 1 if n_err else 0
 
 
+def read_plan(source: str):
+    if source == "-":
+        return json.loads(sys.stdin.buffer.read().decode("utf-8"))
+    return json.loads(Path(source).read_text(encoding="utf-8"))
+
+
+def log_file(arg: str | None) -> Path:
+    if arg:
+        return Path(arg)
+    env = os.environ.get("FOREMAN_LOG")
+    return Path(env) if env else Path.home() / ".claude" / "foreman" / "runs.jsonl"
+
+
+def log_lines(plan: dict, routing: dict, project: Path, stamp: str, run: str) -> list[dict]:
+    """One record per subtask; raises ValueError when a subtask has no valid status."""
+    lines = []
+    for raw in plan.get("subtasks", []):
+        status = raw.get("status")
+        if status not in STATUSES:
+            raise ValueError(f"{raw.get('id')}: status {status!r} is not one of {STATUSES}")
+        sub = resolve(raw, routing)
+        route = routing["kinds"].get(sub.get("kind"), {})
+        line = {
+            "ts": stamp,
+            "run": run,
+            "project": project.as_posix(),
+            "template": plan.get("template", "custom"),
+            "id": sub["id"],
+            "kind": sub.get("kind"),
+            "agent": sub["agent"],
+            "model": sub["model"],
+            "route_model": route.get("model"),
+            "final_model": raw.get("final_model") or sub["model"],
+            "status": status,
+            "attempts": int(raw.get("attempts", 1)),
+            "verified": bool(raw.get("verified", False)),
+        }
+        line.update({k: raw[k] for k in ("tokens", "duration_ms") if isinstance(raw.get(k), int)})
+        if plan.get("coordinator"):
+            line["coordinator"] = plan["coordinator"]
+        lines.append(line)
+    return lines
+
+
+def cmd_log(project: Path, source: str, log_arg: str | None) -> int:
+    try:
+        plan = read_plan(source)
+        stamp = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
+        run = f"{stamp[:10]}-{uuid.uuid4().hex[:8]}"
+        lines = log_lines(plan, load_routing(project), project, stamp, run)
+    except (OSError, json.JSONDecodeError, ValueError, AttributeError) as exc:
+        print(f"cannot log plan: {exc}")
+        return 1
+    path = log_file(log_arg)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8", newline="\n") as fh:
+        fh.writelines(json.dumps(line) + "\n" for line in lines)
+    print(f"logged run {run}: {len(lines)} subtasks -> {path.as_posix()}")
+    return 0
+
+
+def load_log(path: Path, project: Path | None) -> tuple[list[dict], int]:
+    """Records from the log (only this project's unless project is None) and a bad-line count."""
+    records, bad = [], 0
+    if not path.is_file():
+        return records, bad
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        try:
+            rec = json.loads(raw)
+        except json.JSONDecodeError:
+            bad += 1
+            continue
+        if project is None or rec.get("project") == project.as_posix():
+            records.append(rec)
+    return records, bad
+
+
+def tune_hints(groups: dict, routing: dict) -> list[str]:
+    """Suggest a route change only from MIN_SAMPLES or more logged subtasks; never apply one."""
+    ladder = routing["ladder"]
+    hints = []
+    for kind, route in routing["kinds"].items():
+        model = route.get("model")
+        if model not in ladder:
+            continue
+        tier = ladder.index(model)
+        here = groups.get((kind, model), [])
+        if len(here) >= MIN_SAMPLES and tier + 1 < len(ladder):
+            done = sum(r["status"] == "done" for r in here)
+            moved = sum(r["final_model"] != r["model"] or r["attempts"] > 1 for r in here)
+            if done / len(here) < 0.7 or moved / len(here) > 0.3:
+                hints.append(
+                    f"raise {kind} to {ladder[tier + 1]}: on {model} {done} of {len(here)} done,"
+                    f" {moved} escalated"
+                )
+                continue
+        if tier > 0:
+            lower = ladder[tier - 1]
+            below = groups.get((kind, lower), [])
+            good = sum(r["status"] == "done" and r["verified"] for r in below)
+            if len(below) >= MIN_SAMPLES and good / len(below) >= 0.9:
+                hints.append(
+                    f"lower {kind} to {lower}: {good} of {len(below)} done and verified on {lower}"
+                )
+    return hints
+
+
+def cmd_stats(project: Path, log_arg: str | None, all_projects: bool) -> int:
+    path = log_file(log_arg)
+    records, bad = load_log(path, None if all_projects else project)
+    scope = "all projects" if all_projects else project.as_posix()
+    if not records:
+        print(f"no logged subtasks for {scope} in {path.as_posix()}")
+        return 0
+    groups: dict[tuple, list[dict]] = defaultdict(list)
+    for rec in records:
+        groups[(rec.get("kind"), rec.get("model"))].append(rec)
+    rows = []
+    for (kind, model), recs in sorted(
+        groups.items(), key=lambda kv: (str(kv[0][0]), str(kv[0][1]))
+    ):
+        done = sum(r["status"] == "done" for r in recs)
+        moved = sum(r["final_model"] != r["model"] or r["attempts"] > 1 for r in recs)
+        verified = sum(bool(r["verified"]) for r in recs)
+        tokens = [r["tokens"] for r in recs if isinstance(r.get("tokens"), int)]
+        median = f"{statistics.median(tokens) / 1000:.1f}k" if tokens else "-"
+        pct = round(100 * done / len(recs))
+        rows.append([kind, model, len(recs), f"{done} ({pct}%)", moved, verified, median])
+    runs = len({r["run"] for r in records})
+    note = f", {bad} unreadable lines skipped" if bad else ""
+    print(f"runs: {runs} | subtasks: {len(records)} | {scope} | log: {path.as_posix()}{note}")
+    head = ["kind", "model", "subtasks", "done", "escalated", "verified", "median tokens"]
+    print(table(rows, head))
+    hints = tune_hints(groups, load_routing(project))
+    print(
+        "tune hints (apply by hand, e.g. scaffold.py register <agent> --kind <kind> --model <m>):"
+    )
+    print(
+        "\n".join(f"  {h}" for h in hints) or f"  none yet (a hint needs {MIN_SAMPLES}+ subtasks)"
+    )
+    return 0
+
+
+WORKFLOW_JS = """export const meta = __META__
+
+// Generated by foreman plan.py from a checked plan. Change the plan and regenerate.
+const TASK = __TASK__
+const SUBTASKS = __SUBTASKS__
+const WAVES = __WAVES__
+const LADDER = __LADDER__
+const LIMIT = 2000
+const RETURN = {
+  type: 'object',
+  properties: {
+    id: { type: 'string' },
+    status: { type: 'string', enum: ['done', 'partial', 'blocked', 'failed'] },
+    changed: { type: 'array', items: { type: 'string' } },
+    result: { type: 'string' },
+    verified: { type: 'string' },
+    open: { type: 'string' },
+  },
+  required: ['id', 'status', 'changed', 'result', 'verified', 'open'],
+}
+const results = {}
+
+function inputsFor(s) {
+  const parts = s.deps.map(d => {
+    const text = JSON.stringify(results[d])
+    if (text.length > LIMIT) log(`${s.id}: input from ${d} cut to ${LIMIT} characters`)
+    return `${d}: ${text.slice(0, LIMIT)}`
+  })
+  return parts.join('\\n') || 'none'
+}
+
+function brief(s, note) {
+  return [
+    `id:      ${s.id}`,
+    `task:    ${TASK}`,
+    `goal:    ${s.goal}`,
+    `owns:    ${s.owns.length ? s.owns.join(', ') : 'none (read-only)'}`,
+    `reads:   ${s.reads.join(', ') || '-'}`,
+    `inputs:  ${inputsFor(s)}`,
+    `verify:  ${s.verify}`,
+    'limits:  no commit or push; no edits outside owns; no new dependencies unless the goal'
+      + ' names one; no secret values in any file; no full test, lint or build run unless'
+      + ' verify names it',
+    note ? `retry:   ${note}` : '',
+    'return:  the structured fields id, status, changed, result, verified, open',
+  ].filter(Boolean).join('\\n')
+}
+
+function up(model) {
+  const i = LADDER.indexOf(model)
+  return i >= 0 && i < LADDER.length - 1 ? LADDER[i + 1] : null
+}
+
+async function run(s, wave) {
+  const waiting = s.deps.filter(d => results[d].status !== 'done')
+  if (waiting.length) {
+    results[s.id] = { id: s.id, status: 'skipped', changed: [], verified: 'not run',
+      result: `waits on ${waiting.join(', ')}, which did not finish`,
+      open: 'rerun after its dependencies', attempts: 0, final_model: s.model }
+    return
+  }
+  let model = s.model
+  let note = ''
+  let attempts = 0
+  let r = null
+  while (model && attempts < 2) {
+    attempts++
+    const opts = { label: attempts > 1 ? `${s.id} (${model})` : s.id, phase: `Wave ${wave}`,
+      model, schema: RETURN }
+    if (s.agent) opts.agentType = s.agent
+    if (s.effort) opts.effort = s.effort
+    r = await agent(brief(s, note), opts)
+    // failure ladder: a failed or partial attempt goes one tier up, once; blocked needs the foreman
+    if (r && !['failed', 'partial'].includes(r.status)) break
+    const why = r ? `${r.status}, ${r.result.slice(0, 500)}` : 'no result'
+    note = `attempt ${attempts} on ${model}: ${why}`
+    model = up(model)
+    if (model) log(`${s.id}: retrying on ${model}`)
+  }
+  const fallback = { id: s.id, status: 'failed', changed: [], result: 'no result',
+    verified: 'not run', open: 'do it in the main session' }
+  results[s.id] = { ...(r || fallback), attempts, final_model: model || s.model }
+}
+
+for (let w = 0; w < WAVES.length; w++) {
+  phase(`Wave ${w + 1}`)
+  await parallel(WAVES[w].map(id => () => run(SUBTASKS[id], w + 1)))
+  log(`wave ${w + 1}: ${WAVES[w].map(id => id + ' ' + results[id].status).join(', ')}`)
+}
+return results
+"""
+
+
+def compile_workflow(plan: dict, report: dict) -> str:
+    """JS for the Workflow tool: waves run in order, subtasks in a wave run in parallel."""
+    ids = [s["id"] for s in report["subtasks"]]
+    subtasks = {}
+    for s in report["subtasks"]:
+        deps = sorted({d for e in s.get("after", []) for d in resolve_after(e, ids)} - {s["id"]})
+        subtasks[s["id"]] = {
+            "id": s["id"],
+            "agent": s["agent"],
+            "model": s["model"],
+            "effort": s["effort"],
+            "goal": s["goal"],
+            "owns": s["owns"],
+            "reads": s.get("reads", []),
+            "verify": s["verify"],
+            "deps": deps,
+        }
+    task = str(plan.get("task", ""))
+    meta = {
+        "name": f"foreman-{plan.get('template', 'custom')}",
+        "description": f"foreman plan: {task[:100]}" if task else "foreman plan",
+        "phases": [{"title": f"Wave {w}"} for w in range(1, len(report["waves"]) + 1)],
+    }
+    values = {
+        "__META__": json.dumps(meta, indent=2),
+        "__TASK__": json.dumps(task),
+        "__SUBTASKS__": json.dumps(subtasks, indent=2),
+        "__WAVES__": json.dumps(report["waves"]),
+        "__LADDER__": json.dumps(["haiku", "sonnet", "opus"]),
+    }
+    script = WORKFLOW_JS
+    for key, value in values.items():
+        script = script.replace(key, value)
+    return script
+
+
+def cmd_workflow(project: Path, source: str, out: str | None) -> int:
+    try:
+        plan = read_plan(source)
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"FM001 cannot read plan: {exc}", file=sys.stderr)
+        return 1
+    report = check_plan(plan, load_routing(project))
+    if report["errors"]:
+        print("plan has errors; run plan.py check and fix them first:", file=sys.stderr)
+        print("\n".join(f"  {e}" for e in report["errors"]), file=sys.stderr)
+        return 1
+    script = compile_workflow(plan, report)
+    if out:
+        Path(out).parent.mkdir(parents=True, exist_ok=True)
+        Path(out).write_bytes(script.encode("utf-8"))
+        n_waves = len(report["waves"])
+        print(f"wrote {Path(out).as_posix()}: {len(report['subtasks'])} subtasks, {n_waves} waves")
+    else:
+        print(script, end="")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
@@ -409,6 +717,15 @@ def main(argv: list[str] | None = None) -> int:
     p_check = sub.add_parser("check", help="validate a plan and print its waves")
     p_check.add_argument("plan", help="plan JSON file, or - for stdin")
     p_check.add_argument("--json", action="store_true", help="print the report as JSON")
+    p_log = sub.add_parser("log", help="append a finished plan's outcomes to the run log")
+    p_log.add_argument("plan", help="plan JSON with per-subtask status, or - for stdin")
+    p_log.add_argument("--log", help="log file (default: $FOREMAN_LOG or ~/.claude/foreman)")
+    p_stats = sub.add_parser("stats", help="success per kind x model from the run log")
+    p_stats.add_argument("--log", help="log file (default: $FOREMAN_LOG or ~/.claude/foreman)")
+    p_stats.add_argument("--all", action="store_true", help="every project, not just --project")
+    p_wf = sub.add_parser("workflow", help="compile a checked plan into a Workflow script")
+    p_wf.add_argument("plan", help="plan JSON file, or - for stdin")
+    p_wf.add_argument("--out", help="write the script here instead of stdout")
     args = parser.parse_args(argv)
     project = Path(args.project).resolve() if args.project else Path.cwd()
     if args.cmd == "templates":
@@ -417,6 +734,12 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_routes(project)
     if args.cmd == "new":
         return cmd_new(project, args.template, args.task)
+    if args.cmd == "log":
+        return cmd_log(project, args.plan, args.log)
+    if args.cmd == "stats":
+        return cmd_stats(project, args.log, args.all)
+    if args.cmd == "workflow":
+        return cmd_workflow(project, args.plan, args.out)
     return cmd_check(project, args.plan, args.json)
 
 

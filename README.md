@@ -48,6 +48,46 @@ A task that is one unit of work is done inline: delegation costs tokens.
    subtask; results feed the next wave.
 7. **Verify once.** The project's own check runs one time, the foreman reads
    the full diff, and the report says how each result was checked.
+8. **Log.** Each subtask's outcome goes to the run log, which `plan.py stats`
+   turns into a success table and tune hints.
+
+The dispatch turn itself runs on Sonnet (`model: sonnet` in the skill):
+following a written procedure is Sonnet work by foreman's own rule, and the
+judgement calls go to the architect and debugger on Opus. In the v0.1 demo
+run, an Opus coordinator was 98% of the cost (0.90 of 0.92 USD) while the
+Haiku agents did the edits. A skill's model holds only for the turn it loads
+in, so dispatch launches waves in the foreground: a background wave ends the
+turn, and its results come back in a new turn on the session's model.
+
+## Run log and tune hints
+
+```bash
+python skills/dispatch/scripts/plan.py stats          # this project
+python skills/dispatch/scripts/plan.py stats --all    # every project
+```
+
+After each run the foreman appends one line per subtask to
+`~/.claude/foreman/runs.jsonl` (or `$FOREMAN_LOG`): kind, agent, model, the
+route's model, status, attempts, final model, whether it was verified,
+tokens. `stats` groups them by kind and model. Once a pairing has five or
+more subtasks it prints hints: raise a kind a tier when under 70% finish on
+its route's model or over 30% escalate, lower it when 90% or more finish
+verified one tier below. Hints are suggestions; applying one is your call
+(`scaffold.py register`, or `.claude/foreman/routing.json`).
+
+## Big plans as Workflows
+
+```bash
+python skills/dispatch/scripts/plan.py workflow plan.json --out /tmp/foreman-feature.js
+```
+
+A checked plan compiles into a Claude Code Workflow script: waves in order,
+each wave's subtasks in parallel through `agent()` with the plan's agent type,
+model and effort, a JSON schema for the return block, the failure ladder in
+code (a failed subtask retries once a tier up; a blocked one waits for you),
+and dependents of an unfinished subtask marked skipped. dispatch offers this
+for plans over 20 subtasks or when you ask for a workflow, and runs it only on
+your yes.
 
 ## Agents
 
@@ -107,7 +147,8 @@ and `permissionMode` in a plugin agent. `scaffold.py lint` reports each one.
 
 - **Cost.** Anthropic measured multi-agent research runs at about 15 times
   the tokens of a chat. foreman spends them on the parts that need them:
-  scouts and mechanics run on Haiku, and the report shows the model mix.
+  the coordinator, scouts and mechanics run below Opus, and the report shows
+  the model mix.
 - **Provider aliases.** The Agent tool takes `haiku`, `sonnet`, `opus` and
   `fable`. On Amazon Bedrock and Google Cloud's Agent Platform, `sonnet` and
   `haiku` resolve to older models than on the Anthropic API unless
@@ -125,6 +166,8 @@ agents/                the nine agent types
 skills/dispatch/       SKILL.md, routing.json, templates/, references/, scripts/plan.py
 skills/new-agent/      SKILL.md, assets/ (agent and plugin skeletons), references/, scripts/scaffold.py
 examples/              a filled plan the checker passes
+tests/                 pytest suite, plus a Node harness that runs compiled Workflows against mocks
+evals/                 claude plugin eval cases for dispatch and new-agent
 scripts/check.py       repo gate: dashes, secrets, links, manifests, agents vs routing, templates
 ```
 
@@ -132,11 +175,16 @@ scripts/check.py       repo gate: dashes, secrets, links, manifests, agents vs r
 
 ```bash
 python scripts/check.py
+python -m pytest -q
 ruff check .
 ruff format --check .
 npx -y @sagargupta1610/skillcheck@0.2.5 lint skills
 claude plugin validate .
 ```
+
+The eval suite runs real models and costs tokens, so it runs on request:
+`claude plugin eval . --scaffold --allow-tools Bash Write Edit`. Its Bash
+graders need Linux, macOS or WSL2.
 
 Python 3.12+ standard library only. See [CONTRIBUTING.md](CONTRIBUTING.md).
 

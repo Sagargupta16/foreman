@@ -13,3 +13,6 @@ Thumbs.db
 # scratch output from local runs and claude plugin eval
 .scratch/
 results/
+
+# local explainer pages built with archify
+.archify/
