@@ -28,6 +28,10 @@ python skills/dispatch/scripts/plan.py templates
 python skills/dispatch/scripts/plan.py routes
 python skills/dispatch/scripts/plan.py new feature --task "..."
 python skills/dispatch/scripts/plan.py check examples/feature-plan.json
+python skills/dispatch/scripts/plan.py workflow examples/feature-plan.json --out .scratch/feature.js
+node tests/workflow_harness.mjs .scratch/feature.js build-api   # run it against mocks; build-api fails once
+python skills/dispatch/scripts/plan.py log plan-with-results.json --log .scratch/runs.jsonl
+python skills/dispatch/scripts/plan.py stats --log .scratch/runs.jsonl
 python skills/new-agent/scripts/scaffold.py agent NAME --kind review --dest .scratch/agents
 python skills/new-agent/scripts/scaffold.py plugin NAME --dest .scratch/NAME --agent a:implement --skill
 python skills/new-agent/scripts/scaffold.py lint agents
@@ -37,10 +41,12 @@ python skills/new-agent/scripts/scaffold.py lint agents
 
 ```
 python scripts/check.py
+python -m pytest -q
 ruff check .
 ruff format --check .
 npx -y @sagargupta1610/skillcheck@0.2.5 lint skills
 claude plugin validate .
+claude plugin eval . --scaffold --allow-tools Bash Write Edit   # real models, costs tokens, run on request
 ```
 
 ## Entry points
@@ -48,7 +54,8 @@ claude plugin validate .
 - `skills/dispatch/SKILL.md` -- the foreman procedure (`/foreman:dispatch`)
 - `skills/dispatch/routing.json` -- kind to agent, model, effort, tool profile; the one source of truth
 - `skills/dispatch/templates/*.json` -- task templates
-- `skills/dispatch/scripts/plan.py` -- plan checker (FM001-FM014)
+- `skills/dispatch/scripts/plan.py` -- plan checker (FM001-FM014), run log and stats with tune hints, plan-to-Workflow compiler
+- `tests/workflow_harness.mjs` -- runs a compiled Workflow offline against mock `agent()`/`parallel()`; pytest drives it
 - `skills/new-agent/SKILL.md` -- agent and plugin scaffolding (`/foreman:new-agent`)
 - `skills/new-agent/scripts/scaffold.py` -- agent, plugin, register, lint (FA001-FA010)
 - `agents/*.md` -- the nine agent types
@@ -60,6 +67,8 @@ claude plugin validate .
 - The Agent tool's per-call `model` beats the agent file's `model`; dispatch relies on that to route per subtask.
 - `claude plugin validate .` warns that this CLAUDE.md is not loaded as plugin context. Expected: it is for repo sessions, not plugin users.
 - Templates under `skills/new-agent/assets/` use `string.Template` (`${name}`); a literal `$` must be `$$`.
+- The Workflow script template lives in a Python string in plan.py (`WORKFLOW_JS`): `\\n` there becomes `\n` in JS. Workflow scripts may not call `Date.now()`, `Math.random()` or argless `new Date()` (a test checks it).
+- dispatch has `model: sonnet` in its frontmatter: the coordinator turn runs on Sonnet whatever the session model is.
 - Live test runs (`claude -p --plugin-dir .`) need the demo repo OUTSIDE this folder: files under a loaded plugin dir count as sensitive, so every agent edit there is denied in `-p` mode (2026-11-04). The 2026-11-04 run used a two-package demo repo at `C:/Code/worktrees/foreman-demo` (4 haiku subtasks, 4/4 verified, 0.92 USD, 0.90 of it the Opus main session). From the Desktop app, `claude -p` has to run in a terminal tab (Desktop-managed Bedrock credentials refuse a Bash child).
 
 ## Repo-specific rules

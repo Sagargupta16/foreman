@@ -13,6 +13,7 @@ description: >-
   independent parts across many files, sources or questions. A one-unit task
   is done inline instead.
 argument-hint: "[task]"
+model: sonnet
 ---
 
 # dispatch
@@ -23,6 +24,12 @@ or launch agents of their own. The plan is checked by a script before anything
 runs, because the mistakes that sink multi-agent work (two agents editing one
 file, a missing dependency, a model picked by habit) are mechanical and easy
 to catch early.
+
+This skill runs its turn on Sonnet (`model: sonnet` above). By foreman's own
+routing rule, following a written procedure is Sonnet work; the judgement
+calls go to subtasks: `design` to the architect and `debug` to the debugger,
+both on Opus. In a measured run the coordinating session was 98% of the cost,
+so this is where the saving is.
 
 Task: $ARGUMENTS
 
@@ -35,7 +42,9 @@ Task: $ARGUMENTS
 - [references/briefs.md](references/briefs.md): the brief each agent gets,
   shaped by model tier, and the return block each agent sends back
 - [references/integrate.md](references/integrate.md): after each wave, the
-  final check, the report
+  final check, the report, the run log
+- [references/workflow.md](references/workflow.md): when a plan is too big
+  for one session, compile it into a Workflow script
 
 The plan tool is `${CLAUDE_SKILL_DIR}/scripts/plan.py` (Python 3.12+, standard
 library only). The commands below say `python3`; on Windows use `python` or
@@ -56,8 +65,10 @@ library only). The commands below say `python3`; on Windows use `python` or
 | you could not tell a wrong answer from a right one | an unchecked agent result is a guess |
 
    More than 20 subtasks, or the user asked for a workflow ("use a
-   workflow", "orchestrate this"): offer a Workflow script run instead and
-   wait for the user's yes; Workflows need the user's explicit opt-in.
+   workflow", "orchestrate this"): plan and check as usual, then compile the
+   plan per [references/workflow.md](references/workflow.md) and offer the
+   Workflow run. Wait for the user's yes; Workflows need their explicit
+   opt-in.
 
 2. **Pick a template.** List them:
 
@@ -105,16 +116,19 @@ EOF
 ```
 
    Fix every error and rerun until `result: ok`. Read every warning and act
-   on it or say why not. Prefer stdin as shown; a plan too long for that
-   goes to a file in the system temp folder, deleted when the run ends. If the user asked to see the plan first, stop here
-   and wait for their go.
+   on it or say why not. Pass the plan on stdin as shown. Never write a plan
+   file inside the user's repo: a plan too long for stdin goes to the system
+   temp folder and is deleted when the run ends. If the user asked to see
+   the plan first, stop here and wait for their go.
 
 6. **Launch one wave.** Every subtask of the wave goes out in ONE message:
    one Agent call each, with `subagent_type` set to the subtask's agent
    (`foreman:builder`), `model` set to its model, `description` set to its
    id, and the brief from [references/briefs.md](references/briefs.md) as the
-   prompt. Waves that will run for minutes go with `run_in_background: true`;
-   do not poll them, work on integration notes while they run.
+   prompt. Launch in the foreground: do not set `run_in_background`. The
+   skill's Sonnet model holds only for the current turn, and a background
+   wave's results arrive in a new turn on the session's model. In a measured
+   run that moved integration onto Opus and cost more than the agents.
 
 7. **Integrate the wave** per [references/integrate.md](references/integrate.md):
    read every return block, check that changed paths sit inside each
@@ -128,8 +142,25 @@ EOF
    yourself, and weigh the verifier's verdicts. A red check is fixed here in
    the main session, not by relaunching every lane.
 
-10. **Report** in the shape below. Mark anything you did not check yourself
-    `(unverified)`.
+10. **Log the run, before the report.** The report is your last message, so
+    a step after it gets skipped. Add each subtask's outcome to the plan
+    JSON (`status`, `attempts`, `final_model`, `verified`, and `tokens` and
+    `duration_ms` when the Agent result showed them) plus `"coordinator"`:
+    the model you are running on, and append it to the run log:
+
+```bash
+python3 "${CLAUDE_SKILL_DIR}/scripts/plan.py" log - <<'EOF'
+{ "task": "...", "template": "feature", "coordinator": "<your model>", "subtasks": [ ... ] }
+EOF
+```
+
+    `plan.py stats` reads the log back as a success table per kind and
+    model, with tune hints once a pairing has five or more subtasks. A hint
+    is a suggestion for the user, never a change you make on your own; see
+    [references/integrate.md](references/integrate.md).
+
+11. **Report** in the shape below, with the `logged run` line from step 10.
+    Mark anything you did not check yourself `(unverified)`.
 
 ## Output
 
@@ -140,6 +171,7 @@ plan: feature | 6 subtasks | 4 waves | models: haiku 1, sonnet 4, opus 1
 | build-api | foreman:builder | sonnet | done | src/api/users.ts | pytest tests/api passed (rerun by me) |
 | build-ui | foreman:builder | sonnet | done | web/users.tsx | (unverified: needs a browser) |
 check: <project check command> passed once
+logged run <run id>: <N> subtasks
 open: <what is left, or none>
 ```
 

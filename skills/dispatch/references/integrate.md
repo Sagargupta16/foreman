@@ -39,3 +39,37 @@ largest model.
 
 Commit, push or open a PR only when the user asked, and only after the final
 check passes. One commit or PR for the whole run, never one per subtask.
+
+## Log the run
+
+Every finished run goes to the run log, including runs where subtasks
+failed: the failures are what the stats are for. Per subtask, record:
+
+| field | value |
+| --- | --- |
+| `status` | `done`, `partial`, `blocked`, `failed`, `skipped`, or `inline` when you did it yourself after the ladder |
+| `attempts` | launches of this subtask, 1 when it ran once |
+| `final_model` | the model of the last attempt, when the ladder moved it |
+| `verified` | `true` only when you checked the result yourself |
+| `tokens`, `duration_ms` | from the Agent result's usage, when it shows them |
+
+The log lives at `~/.claude/foreman/runs.jsonl` (or `$FOREMAN_LOG`), one
+JSON line per subtask with the project path, so one file serves every
+project. It holds subtask ids and kinds, not the task's content beyond the
+template name.
+
+## Read the stats
+
+`plan.py stats` groups the log for this project (`--all` for every project)
+by kind and model: subtasks, done, escalated, verified, median tokens. Below
+the table it prints tune hints:
+
+- **raise** a kind one tier when, on its route's model, fewer than 70% of its
+  subtasks finished or more than 30% escalated
+- **lower** a kind one tier when, one tier below its route, 90% or more
+  finished and were verified
+
+A hint needs five or more subtasks for that pairing. Show hints to the user
+with their numbers; applying one is their decision (`scaffold.py register`
+or an edit to `.claude/foreman/routing.json`). Never change a route because
+of a hint on your own.

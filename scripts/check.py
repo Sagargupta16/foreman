@@ -32,6 +32,8 @@ SKIP_DIRS = {
     ".pytest_cache",
     ".ruff_cache",
     ".scratch",
+    ".archify",
+    "results",  # claude plugin eval output
 }
 SECRETS = [
     ("aws access key", re.compile(r"\bA(?:KIA|SIA)[0-9A-Z]{16}\b")),

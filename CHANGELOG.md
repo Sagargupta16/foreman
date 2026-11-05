@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.2.0] - 2026-11-04
+
+- Run log: `plan.py log` appends one line per finished subtask to
+  `~/.claude/foreman/runs.jsonl` (or `$FOREMAN_LOG`); dispatch logs every run
+  as its last step.
+- `plan.py stats`: success, escalation and verification per kind x model,
+  with tune hints (raise or lower a route) once a pairing has 5+ subtasks.
+  Hints are never applied automatically.
+- `plan.py workflow`: compiles a checked plan into a Workflow script (waves,
+  `agentType` and model per subtask, structured return block, failure ladder
+  in code, dependents of unfinished work skipped). New reference
+  `references/workflow.md`; dispatch offers it for plans over 20 subtasks.
+- Cheaper coordinator: the dispatch skill runs on Sonnet (`model: sonnet`);
+  judgement still goes to the architect and debugger on Opus. Waves launch in
+  the foreground, because a background wave's results arrive in a new turn on
+  the session's model (measured: an Opus integration turn cost 0.71 of 1.49
+  USD). The run log records the coordinator's actual model.
+- Tests: pytest suite for plan.py and scaffold.py, and a Node harness that
+  runs compiled Workflows against mock `agent()` and `parallel()`.
+- Evals: `claude plugin eval` cases for dispatch and new-agent.
+- Fix: `scaffold.py plugin` checks every `--agent` name and kind before
+  writing, so a bad kind no longer leaves a half-written plugin.
+- Compiled Workflows: `final_model` is the model of the last attempt (it
+  named a model that never ran after two failures), an `agent()` call that
+  throws counts as a failed attempt instead of ending the run, and plan text
+  that looks like a template placeholder (`__TASK__`) stays text.
+- Tune hints: the "lower" hint counts only first-try successes on the lower
+  tier, and skipped subtasks no longer count against a model.
+- `check.py` skips `.archify/` and eval `results/`; CI runs pytest.
+
 ## [0.1.0] - 2026-11-04
 
 - `dispatch` skill: qualify, pick a template, plan, route, check, run in

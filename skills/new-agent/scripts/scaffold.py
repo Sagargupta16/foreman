@@ -279,6 +279,12 @@ def cmd_plugin(args: argparse.Namespace) -> int:
         agent, _, kind = spec.partition(":")
         agents.append((agent, kind or "implement"))
     routing = load_routing()
+    # check every agent before writing anything, so a bad one leaves no half-written plugin
+    for agent, kind in agents:
+        if not KEBAB.match(agent):
+            raise SystemExit(f"agent name {agent!r} must be kebab-case")
+        if kind not in routing["kinds"]:
+            raise SystemExit(f"unknown kind {kind!r}; known: {', '.join(routing['kinds'])}")
     manifest = {
         "name": args.name,
         "version": "0.1.0",

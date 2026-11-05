@@ -36,5 +36,12 @@ jobs:
       - name: Ruff format
         run: ruff format --check .
 
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+
+      - name: Tests (plan checker, run log, Workflow compiler under a mock, scaffolder, eval suite shape)
+        run: python -m pytest -q
+
       - name: Lint skills (skillcheck)
         run: npx -y @sagargupta1610/skillcheck@0.2.5 lint skills
