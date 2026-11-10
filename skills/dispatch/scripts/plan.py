@@ -11,8 +11,8 @@
 
 The run log defaults to $FOREMAN_LOG, else ~/.claude/foreman/runs.jsonl. For `log`, each
 subtask carries its outcome: status (done, partial, blocked, failed, skipped, inline),
-attempts (default 1), final_model (default: model), verified (true when the foreman checked
-it), and optional tokens and duration_ms.
+attempts (default 1), final_model (default: model), final_effort (default: effort), verified
+(true when the foreman checked it), and optional tokens and duration_ms.
 
 check rules (E = error, exit 1; W = warning):
   FM001 E plan is not a JSON object with a non-empty subtasks list
@@ -26,15 +26,18 @@ check rules (E = error, exit 1; W = warning):
   FM009 E two subtasks in one wave own the same path (W when two globs only may overlap)
   FM010 E subtask has no verify
   FM011 W wave wider than max_wave
-  FM012 W one subtask: do it inline
+  FM012 W one subtask below the top tier: do it inline
   FM013 W agent is neither a foreman agent nor named in a route
   FM014 W template hint (fan_out, skip_when) left in the plan
+  FM015 W more than max_top subtasks on the top tier of the ladder
 
 An "after" entry matches a subtask id, or every id that starts with it plus "-"
-(after: ["build"] waits for build-api and build-ui).
+(after: ["build"] waits for build-api and build-ui). "owns", "reads" and "after" take a
+list; a lone string counts as one entry.
 
 Project extensions: <project>/.claude/foreman/routing.json ("kinds" merged over the
-defaults, "max_wave") and <project>/.claude/foreman/templates/*.json (same name replaces).
+defaults, "ladder", "max_wave", "max_top") and <project>/.claude/foreman/templates/*.json
+(same name replaces).
 """
 
 from __future__ import annotations
@@ -74,7 +77,9 @@ def load_routing(project: Path) -> dict:
         over = load_json(extra)
         for kind, route in over.get("kinds", {}).items():
             routing["kinds"][kind] = {**routing["kinds"].get(kind, {}), **route}
-        routing["max_wave"] = over.get("max_wave", routing["max_wave"])
+        routing["ladder"] = over.get("ladder") or routing["ladder"]  # an empty ladder is no ladder
+        for key in ("max_wave", "max_top"):
+            routing[key] = over.get(key, routing[key])
     return routing
 
 
@@ -94,6 +99,13 @@ def roster() -> set[str]:
     return {f"foreman:{p.stem}" for p in (PLUGIN / "agents").glob("*.md")}
 
 
+def as_list(value) -> list[str]:
+    """A plan field that takes a list: a lone string is one entry, not its characters."""
+    if value is None:
+        return []
+    return [str(v) for v in value] if isinstance(value, list) else [str(value)]
+
+
 def resolve_after(entry: str, ids: list[str]) -> list[str]:
     if entry in ids:
         return [entry]
@@ -107,7 +119,7 @@ def waves_of(items: list[dict]) -> tuple[list[list[str]], list[str]]:
     problems = []
     for s in items:
         deps[s["id"]] = set()
-        for entry in s.get("after", []):
+        for entry in as_list(s.get("after")):
             hits = resolve_after(entry, ids)
             if not hits:
                 problems.append(f"FM006 {s['id']}: after {entry!r} names no subtask")
@@ -169,7 +181,9 @@ def resolve(sub: dict, routing: dict) -> dict:
         "model": sub.get("model") or route.get("model", ""),
         "effort": sub.get("effort") or route.get("effort", ""),
         "writes": sub.get("writes", route.get("writes", False)),
-        "owns": [norm(p) for p in sub.get("owns", [])],
+        "owns": [norm(p) for p in as_list(sub.get("owns"))],
+        "reads": as_list(sub.get("reads")),
+        "after": as_list(sub.get("after")),
     }
 
 
@@ -195,7 +209,7 @@ def check_plan(plan, routing: dict) -> dict:
         if not isinstance(raw, dict):
             errors.append(f"FM002 subtask {n} is not an object")
             continue
-        sid = raw.get("id") or f"#{n}"
+        sid = str(raw.get("id") or f"#{n}")
         for key in ("id", "kind", "goal"):
             if not raw.get(key):
                 errors.append(f"FM002 {sid}: missing {key}")
@@ -203,7 +217,7 @@ def check_plan(plan, routing: dict) -> dict:
             errors.append(f"FM002 {sid}: duplicate id")
         seen.add(sid)
         kind = raw.get("kind")
-        if kind and kind not in kinds:
+        if kind and (not isinstance(kind, str) or kind not in kinds):
             errors.append(f"FM003 {sid}: unknown kind {kind!r} (known: {', '.join(sorted(kinds))})")
             continue
         sub = resolve({**raw, "id": sid}, routing)
@@ -255,8 +269,17 @@ def check_plan(plan, routing: dict) -> dict:
                             errors.append(msg)
                         elif hit == "maybe":
                             warnings.append(msg + " (globs may overlap; list files to be sure)")
-    if len(items) == 1:
+    top = routing["ladder"][-1]
+    on_top = [s["id"] for s in items if s["model"] == top]
+    # one unit sent up to the top tier is the point of delegating it; anything else stays inline
+    if len(items) == 1 and not on_top:
         warnings.append("FM012 one subtask: do it inline instead of delegating")
+    if len(on_top) > routing["max_top"]:
+        warnings.append(
+            f"FM015 {len(on_top)} on {top}, max_top is {routing['max_top']}:"
+            f" {', '.join(on_top)}; keep {top} for work that beat the tier below or cannot"
+            " be split, and move the rest down"
+        )
     return {"errors": errors, "warnings": warnings, "waves": waves, "subtasks": items}
 
 
@@ -438,6 +461,8 @@ def log_lines(plan: dict, routing: dict, project: Path, stamp: str, run: str) ->
             "model": sub["model"],
             "route_model": route.get("model"),
             "final_model": raw.get("final_model") or sub["model"],
+            "effort": sub["effort"],
+            "final_effort": raw.get("final_effort") or sub["effort"],
             "status": status,
             "attempts": int(raw.get("attempts", 1)),
             "verified": bool(raw.get("verified", False)),
@@ -482,6 +507,12 @@ def load_log(path: Path, project: Path | None) -> tuple[list[dict], int]:
     return records, bad
 
 
+def effort_only(rec: dict) -> bool:
+    """True when the rerun stayed on the model and only raised the effort level."""
+    same_model = rec["final_model"] == rec["model"]
+    return same_model and rec.get("final_effort", rec.get("effort")) != rec.get("effort")
+
+
 def tune_hints(groups: dict, routing: dict) -> list[str]:
     """Suggest a route change only from MIN_SAMPLES or more logged subtasks; never apply one."""
     ladder = routing["ladder"]
@@ -493,9 +524,20 @@ def tune_hints(groups: dict, routing: dict) -> list[str]:
         tier = ladder.index(model)
         # a skipped subtask never ran, so it says nothing about the model
         here = [r for r in groups.get((kind, model), []) if r["status"] != "skipped"]
+        if len(here) >= MIN_SAMPLES:
+            # a rerun that only raised effort argues for more effort, not for a larger model
+            pushed = sum(effort_only(r) for r in here)
+            if pushed / len(here) > 0.3:
+                hints.append(
+                    f"raise {kind} effort above {route.get('effort')}: on {model} {pushed} of"
+                    f" {len(here)} needed a rerun at higher effort"
+                )
         if len(here) >= MIN_SAMPLES and tier + 1 < len(ladder):
             done = sum(r["status"] == "done" for r in here)
-            moved = sum(r["final_model"] != r["model"] or r["attempts"] > 1 for r in here)
+            moved = sum(
+                (r["final_model"] != r["model"] or r["attempts"] > 1) and not effort_only(r)
+                for r in here
+            )
             if done / len(here) < 0.7 or moved / len(here) > 0.3:
                 hints.append(
                     f"raise {kind} to {ladder[tier + 1]}: on {model} {done} of {len(here)} done,"
@@ -609,44 +651,57 @@ function up(model) {
   return i >= 0 && i < LADDER.length - 1 ? LADDER[i + 1] : null
 }
 
+// failure ladder, one rerun: a partial result below high effort stopped short, so it reruns on
+// the same model at high effort (on any tier); a failed one, or a partial one already at high
+// effort, had its try and goes one model tier up, and has no rerun on the top tier
+function rerunWith(r, model, effort) {
+  if (r && r.status === 'partial' && ['low', 'medium'].includes(effort)) {
+    return { model, effort: 'high' }
+  }
+  const higher = up(model)
+  return higher ? { model: higher, effort } : null
+}
+
 async function run(s, wave) {
   const waiting = s.deps.filter(d => results[d].status !== 'done')
   if (waiting.length) {
     results[s.id] = { id: s.id, status: 'skipped', changed: [], verified: 'not run',
       result: `waits on ${waiting.join(', ')}, which did not finish`,
-      open: 'rerun after its dependencies', attempts: 0, final_model: s.model }
+      open: 'rerun after its dependencies', attempts: 0, final_model: s.model,
+      final_effort: s.effort }
     return
   }
-  let model = s.model
-  let tried = s.model
+  let now = { model: s.model, effort: s.effort }
   let note = ''
   let attempts = 0
   let r = null
-  while (model && attempts < 2) {
+  while (attempts < 2) {
     attempts++
-    tried = model
-    const opts = { label: attempts > 1 ? `${s.id} (${model})` : s.id, phase: `Wave ${wave}`,
-      model, schema: RETURN }
+    const tag = now.effort === s.effort ? now.model : `${now.model}, ${now.effort}`
+    const opts = { label: attempts > 1 ? `${s.id} (${tag})` : s.id, phase: `Wave ${wave}`,
+      model: now.model, schema: RETURN }
     if (s.agent) opts.agentType = s.agent
-    if (s.effort) opts.effort = s.effort
+    if (now.effort) opts.effort = now.effort
     try {
       r = await agent(brief(s, note), opts)
     } catch (e) {
       // agent() throws when the return never matches the schema; treat it as a failed attempt
       r = null
-      log(`${s.id}: agent call failed on ${model}: ${String(e).slice(0, 200)}`)
+      log(`${s.id}: agent call failed on ${now.model}: ${String(e).slice(0, 200)}`)
     }
-    // failure ladder: a failed or partial attempt goes one tier up, once; blocked needs the foreman
+    // blocked needs the foreman, so it is not rerun
     if (r && !['failed', 'partial'].includes(r.status)) break
-    if (attempts >= 2) break
+    const rerun = attempts < 2 ? rerunWith(r, now.model, now.effort) : null
+    if (!rerun) break
     const why = r ? `${r.status}, ${r.result.slice(0, 500)}` : 'no result'
-    note = `attempt ${attempts} on ${model}: ${why}`
-    model = up(model)
-    if (model) log(`${s.id}: retrying on ${model}`)
+    note = `attempt ${attempts} on ${now.model}: ${why}`
+    now = rerun
+    log(`${s.id}: retrying on ${now.model} at ${now.effort || 'default'} effort`)
   }
   const fallback = { id: s.id, status: 'failed', changed: [], result: 'no result',
     verified: 'not run', open: 'do it in the main session' }
-  results[s.id] = { ...(r || fallback), attempts, final_model: tried }
+  results[s.id] = { ...(r || fallback), attempts, final_model: now.model,
+    final_effort: now.effort }
 }
 
 for (let w = 0; w < WAVES.length; w++) {
@@ -658,7 +713,7 @@ return results
 """
 
 
-def compile_workflow(plan: dict, report: dict) -> str:
+def compile_workflow(plan: dict, report: dict, routing: dict) -> str:
     """JS for the Workflow tool: waves run in order, subtasks in a wave run in parallel."""
     ids = [s["id"] for s in report["subtasks"]]
     subtasks = {}
@@ -686,7 +741,7 @@ def compile_workflow(plan: dict, report: dict) -> str:
         "__TASK__": json.dumps(task),
         "__SUBTASKS__": json.dumps(subtasks, indent=2),
         "__WAVES__": json.dumps(report["waves"]),
-        "__LADDER__": json.dumps(["haiku", "sonnet", "opus"]),
+        "__LADDER__": json.dumps(routing["ladder"]),
     }
     # one pass over the template only, so placeholder-like text inside the plan stays text
     return PLACEHOLDER.sub(lambda m: values[m.group(0)], WORKFLOW_JS)
@@ -698,12 +753,13 @@ def cmd_workflow(project: Path, source: str, out: str | None) -> int:
     except (OSError, json.JSONDecodeError) as exc:
         print(f"FM001 cannot read plan: {exc}", file=sys.stderr)
         return 1
-    report = check_plan(plan, load_routing(project))
+    routing = load_routing(project)
+    report = check_plan(plan, routing)
     if report["errors"]:
         print("plan has errors; run plan.py check and fix them first:", file=sys.stderr)
         print("\n".join(f"  {e}" for e in report["errors"]), file=sys.stderr)
         return 1
-    script = compile_workflow(plan, report)
+    script = compile_workflow(plan, report, routing)
     if out:
         Path(out).parent.mkdir(parents=True, exist_ok=True)
         Path(out).write_bytes(script.encode("utf-8"))

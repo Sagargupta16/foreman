@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.3.0] - 2026-11-10
+
+- Fable tier: the ladder is now haiku, sonnet, opus, fable. A tenth agent,
+  `specialist` (fable, high effort), takes `solve` subtasks: one long,
+  tangled unit done end to end in one context where splitting would lose the
+  thread. A `design` or `debug` that was still wrong on Opus reruns on Fable.
+  `references/routing.md` says what the top tier is for and what to keep off
+  it (the coordinating turn, work a brief could spell out, getting past a
+  refusal), with list prices read 2026-11-10.
+- `plan.py check`: FM015 warns when more than `max_top` (2) subtasks sit on
+  the top tier. FM012 no longer flags a single subtask that is on the top
+  tier: sending one hard unit up is the point of delegating it.
+- Failure ladder: effort before model. A subtask that stopped short
+  (`partial`, below high effort) reruns once on the same model at `high`
+  through the Agent tool's per-call `effort` (Claude Code 2.1.292 and
+  later); one that tried and was wrong reruns once a tier up. Compiled
+  Workflows apply the same rule and return `final_effort`.
+- Run log and stats: each line records `effort` and `final_effort`. A new
+  hint, raise a kind's effort, fires when over 30% of its subtasks needed a
+  rerun at higher effort; those reruns no longer count toward raising the
+  model.
+- Fix: dispatch told the coordinator to launch waves in the foreground, which
+  interactive terminal, VS Code and desktop sessions cannot do (subagents
+  start in the background there by default). The skill now handles both
+  cases and says which model integrates the results; the README has the
+  table and the two ways to stay on Sonnet.
+- Fix: a plan with `"owns": "src/x.ts"` (a string, not a list) was read as
+  one path per character and reported a false overlap; `owns`, `reads` and
+  `after` now take a lone string as one entry. A numeric `id` no longer
+  crashes `plan.py check`, and a `kind` that is not text is FM003.
+- Project routing can set `ladder` and `max_top` as well as `max_wave`, so a
+  project with no Fable stops the ladder at opus.
+- Compiled Workflows take the ladder from the routing table (it was a fixed
+  haiku, sonnet, opus list).
+
 ## [0.2.0] - 2026-11-04
 
 - Run log: `plan.py log` appends one line per finished subtask to

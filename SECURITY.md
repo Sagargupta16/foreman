@@ -2,7 +2,7 @@
 
 ## What this plugin is
 
-foreman ships Markdown skills, nine agent definitions, JSON routing and
+foreman ships Markdown skills, ten agent definitions, JSON routing and
 templates, and two Python scripts (standard library only) that check plans
 and write agent files. It has no server, no network calls of its own and no
 hooks.

@@ -1,8 +1,8 @@
 # foreman
 
 A Claude Code plugin that splits a task into subtasks, hands each one to a
-predefined agent type, and picks Haiku, Sonnet or Opus for each by the kind
-of work. The main session is the foreman: it plans, launches the agents in
+predefined agent type, and picks Haiku, Sonnet, Opus or Fable for each by the
+kind of work. The main session is the foreman: it plans, launches the agents in
 dependency waves, reads every result and verifies once at the end. A plan
 checker runs before any agent starts, and a scaffolder writes new agents and
 whole agent plugins in the same format.
@@ -40,12 +40,14 @@ A task that is one unit of work is done inline: delegation costs tokens.
 3. **Plan.** Fill subtasks: goal, the files each may write (`owns`), what it
    waits for (`after`), the one check that proves it (`verify`).
 4. **Route.** Each kind of work has a default agent, model and effort. Any
-   change needs a written reason.
+   change needs a written reason, and the top tier is capped at two subtasks
+   a plan.
 5. **Check.** `plan.py check` rejects overlapping file ownership inside a
    wave, read-only agents that own files, writers that own nothing, cycles,
    missing checks and silent model changes, then prints the waves.
 6. **Run.** Each wave goes out as parallel Agent calls with `model` set per
-   subtask; results feed the next wave.
+   subtask; results feed the next wave. A subtask that stopped short reruns
+   once at higher effort; one that tried and was wrong reruns once a tier up.
 7. **Verify once.** The project's own check runs one time, the foreman reads
    the full diff, and the report says how each result was checked.
 8. **Log.** Each subtask's outcome goes to the run log, which `plan.py stats`
@@ -55,9 +57,20 @@ The dispatch turn itself runs on Sonnet (`model: sonnet` in the skill):
 following a written procedure is Sonnet work by foreman's own rule, and the
 judgement calls go to the architect and debugger on Opus. In the v0.1 demo
 run, an Opus coordinator was 98% of the cost (0.90 of 0.92 USD) while the
-Haiku agents did the edits. A skill's model holds only for the turn it loads
-in, so dispatch launches waves in the foreground: a background wave ends the
-turn, and its results come back in a new turn on the session's model.
+Haiku agents did the edits.
+
+A skill's model holds only for the turn it loads in, so where the agents'
+reports come back decides which model integrates them:
+
+| session | agents run | integration runs on |
+| --- | --- | --- |
+| `claude -p`, Agent SDK | in the foreground; the turn waits | Sonnet |
+| interactive terminal, VS Code, desktop app | in the background by default; reports arrive in later turns | the session's model |
+
+For an interactive run on Sonnet end to end, switch the session with
+`/model sonnet` first, or set `CLAUDE_CODE_FORK_SUBAGENT=0` so the turn can
+wait for its agents ([sub-agents docs](https://code.claude.com/docs/en/sub-agents.md#run-subagents-in-foreground-or-background),
+read 2026-11-10).
 
 ## Run log and tune hints
 
@@ -70,7 +83,8 @@ After each run the foreman appends one line per subtask to
 `~/.claude/foreman/runs.jsonl` (or `$FOREMAN_LOG`): kind, agent, model, the
 route's model, status, attempts, final model, whether it was verified,
 tokens. `stats` groups them by kind and model. Once a pairing has five or
-more subtasks it prints hints: raise a kind a tier when under 70% finish on
+more subtasks it prints hints: raise a kind's effort when over 30% finished
+only after a rerun at higher effort, raise it a tier when under 70% finish on
 its route's model or over 30% escalate, lower it when 90% or more finish
 verified one tier below. Hints are suggestions; applying one is your call
 (`scaffold.py register`, or `.claude/foreman/routing.json`).
@@ -84,8 +98,9 @@ python skills/dispatch/scripts/plan.py workflow plan.json --out /tmp/foreman-fea
 A checked plan compiles into a Claude Code Workflow script: waves in order,
 each wave's subtasks in parallel through `agent()` with the plan's agent type,
 model and effort, a JSON schema for the return block, the failure ladder in
-code (a failed subtask retries once a tier up; a blocked one waits for you),
-and dependents of an unfinished subtask marked skipped. dispatch offers this
+code (a subtask that stopped short reruns once at high effort, a failed one
+once a tier up, a blocked one waits for you), and dependents of an
+unfinished subtask marked skipped. dispatch offers this
 for plans over 20 subtasks or when you ask for a workflow, and runs it only on
 your yes.
 
@@ -102,13 +117,28 @@ your yes.
 | `foreman:verifier` | sonnet | medium | reproduce claims with its own commands (read-only) |
 | `foreman:architect` | opus | high | approach, tradeoffs, lanes with disjoint files (read-only) |
 | `foreman:debugger` | opus | high | reproduce, root cause, the fix and its files (read-only) |
+| `foreman:specialist` | fable | high | one tangled unit end to end: investigate, decide, change, prove |
 
 The rule behind the tiers: Haiku when the brief can spell out the exact
 steps, Sonnet when the goal is clear and the agent picks the steps, Opus when
-the agent has to work out what the goal means. A subtask moves up a tier for
+the agent has to work out what the goal means, Fable when one long chain of
+hard reasoning has to stay in one head. A subtask moves up a tier for
 ambiguity, high stakes or a failed attempt, and down when it repeats a proven
 recipe. Every agent ends with the same return block (`id`, `status`,
 `changed`, `result`, `verified`, `open`), so integration is mechanical.
+
+### Where Fable fits
+
+Fable is the exception in a plan. It reaches a subtask three ways: a `solve`
+subtask (a unit that cannot be split, such as a parser rewrite or a
+concurrency fix, goes to the specialist whole), the failure ladder (a
+`design` or `debug` that was still wrong on Opus reruns on Fable), or a
+route change with a written reason. The plan checker warns past two Fable
+subtasks. It is never the coordinator: Anthropic measured Fable as an
+orchestrator at 19% more cost than Opus for about the same score, and
+advises starting with Opus and keeping Fable for demanding reasoning and
+long-horizon work ([cost and intelligence guide](https://platform.claude.com/docs/en/about-claude/models/optimizing-for-cost-and-intelligence),
+read 2026-11-10).
 
 ## Templates
 
@@ -153,8 +183,18 @@ and `permissionMode` in a plugin agent. `scaffold.py lint` reports each one.
   `fable`. On Amazon Bedrock and Google Cloud's Agent Platform, `sonnet` and
   `haiku` resolve to older models than on the Anthropic API unless
   `ANTHROPIC_DEFAULT_SONNET_MODEL` and `ANTHROPIC_DEFAULT_HAIKU_MODEL` are set.
+- **Fable.** List price is $8 / $40 per million tokens against $4 / $20 for
+  Opus 5.5 (read 2026-11-10). Depending on the plan it bills to usage
+  credits, and `claude -p` bills it without asking. A request its safety
+  classifiers flag (mostly cybersecurity and biology) reruns on an older
+  Opus model, as it does from Opus 5.5, so a larger model does not get past
+  a refusal. No Fable on your provider or plan: set
+  `"ladder": ["haiku", "sonnet", "opus"]` and route `solve` to opus in
+  `.claude/foreman/routing.json`.
 - **Effort.** A subagent on a different model from the session does not
-  inherit the session's effort, so every agent file sets `effort`.
+  inherit the session's effort, so every agent file sets `effort`. The
+  Agent tool also takes `effort` per call (Claude Code 2.1.292 and later),
+  which is how a rerun at higher effort is launched.
 - **Forced model.** With `CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1`, one model runs
   every subagent and foreman's routing has no effect.
 
@@ -162,7 +202,7 @@ and `permissionMode` in a plugin agent. `scaffold.py lint` reports each one.
 
 ```text
 .claude-plugin/        plugin.json and marketplace.json (versions must match)
-agents/                the nine agent types
+agents/                the ten agent types
 skills/dispatch/       SKILL.md, routing.json, templates/, references/, scripts/plan.py
 skills/new-agent/      SKILL.md, assets/ (agent and plugin skeletons), references/, scripts/scaffold.py
 examples/              a filled plan the checker passes

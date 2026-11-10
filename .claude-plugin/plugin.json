@@ -1,7 +1,7 @@
 {
   "name": "foreman",
-  "version": "0.2.0",
-  "description": "Split any task into subtasks, hand each one to a predefined agent type and pick Haiku, Sonnet or Opus for it by the kind of work. Nine agents (scout, mechanic, researcher, builder, writer, reviewer, verifier, architect, debugger), seven task templates (feature, bugfix, refactor, migration, research, review, docs), a plan checker that catches overlapping file ownership and unjustified model picks before any agent starts, a run log whose stats suggest route changes, a compiler that turns big plans into Workflow scripts, and a scaffolder for new agents and agent plugins.",
+  "version": "0.3.0",
+  "description": "Split any task into subtasks, hand each one to a predefined agent type and pick Haiku, Sonnet, Opus or Fable for it by the kind of work. Ten agents (scout, mechanic, researcher, builder, writer, reviewer, verifier, architect, debugger, specialist), seven task templates (feature, bugfix, refactor, migration, research, review, docs), a plan checker that catches overlapping file ownership and unjustified model picks before any agent starts, a run log whose stats suggest route changes, a compiler that turns big plans into Workflow scripts, and a scaffolder for new agents and agent plugins.",
   "author": {
     "name": "Sagar Gupta",
     "url": "https://github.com/Sagargupta16"

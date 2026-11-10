@@ -30,6 +30,7 @@ nothing useful and costs words).
 
 | tier | what to put in `goal` and `inputs` |
 | --- | --- |
+| fable | the same as opus, plus everything a failed earlier attempt found and the reason the unit was not split; no steps at all |
 | opus | the outcome in the user's words, why it matters, what a good result looks like, the constraints; leave the route to the agent |
 | sonnet | the goal plus the steps that are already decided, the interfaces to keep, the files that matter, the edge cases you know |
 | haiku | exact paths, exact old and new text or the exact commands, the expected output; nothing to decide |

@@ -10,7 +10,7 @@
 
 ## Project
 
-Claude Code plugin (`foreman`) that splits a task into subtasks, routes each to a predefined agent type and picks the model (haiku, sonnet, opus) by the kind of work, then runs the subtasks in dependency waves and verifies once. A second skill scaffolds new agents and agent plugins and lints agent files. Private repo for now; written as if public.
+Claude Code plugin (`foreman`) that splits a task into subtasks, routes each to a predefined agent type and picks the model (haiku, sonnet, opus, fable) by the kind of work, then runs the subtasks in dependency waves and verifies once. A second skill scaffolds new agents and agent plugins and lints agent files. Private repo for now; written as if public.
 
 Install: `/plugin marketplace add Sagargupta16/foreman` then `/plugin install foreman@foreman`, or `claude --plugin-dir .` from a clone.
 
@@ -54,11 +54,11 @@ claude plugin eval . --scaffold --allow-tools Bash Write Edit   # real models, c
 - `skills/dispatch/SKILL.md` -- the foreman procedure (`/foreman:dispatch`)
 - `skills/dispatch/routing.json` -- kind to agent, model, effort, tool profile; the one source of truth
 - `skills/dispatch/templates/*.json` -- task templates
-- `skills/dispatch/scripts/plan.py` -- plan checker (FM001-FM014), run log and stats with tune hints, plan-to-Workflow compiler
+- `skills/dispatch/scripts/plan.py` -- plan checker (FM001-FM015), run log and stats with tune hints, plan-to-Workflow compiler
 - `tests/workflow_harness.mjs` -- runs a compiled Workflow offline against mock `agent()`/`parallel()`; pytest drives it
 - `skills/new-agent/SKILL.md` -- agent and plugin scaffolding (`/foreman:new-agent`)
 - `skills/new-agent/scripts/scaffold.py` -- agent, plugin, register, lint (FA001-FA010)
-- `agents/*.md` -- the nine agent types
+- `agents/*.md` -- the ten agent types
 
 ## Gotchas
 
@@ -68,7 +68,8 @@ claude plugin eval . --scaffold --allow-tools Bash Write Edit   # real models, c
 - `claude plugin validate .` warns that this CLAUDE.md is not loaded as plugin context. Expected: it is for repo sessions, not plugin users.
 - Templates under `skills/new-agent/assets/` use `string.Template` (`${name}`); a literal `$` must be `$$`.
 - The Workflow script template lives in a Python string in plan.py (`WORKFLOW_JS`): `\\n` there becomes `\n` in JS. Workflow scripts may not call `Date.now()`, `Math.random()` or argless `new Date()` (a test checks it).
-- dispatch has `model: sonnet` in its frontmatter: the coordinator turn runs on Sonnet whatever the session model is.
+- dispatch has `model: sonnet` in its frontmatter: the coordinator turn runs on Sonnet whatever the session model is. That holds for one turn only. Interactive terminal, VS Code and desktop sessions start subagents in the background by default (sub-agents docs, read 2026-11-10), so wave results arrive in later turns on the session's model; only `claude -p`, the Agent SDK or `CLAUDE_CODE_FORK_SUBAGENT=0` let the turn wait.
+- Fable is the top of the ladder and the route for `solve` only (`foreman:specialist`). `max_top` in routing.json caps Fable subtasks per plan (FM015). Reruns go effort first (a `partial` below high reruns at high on the same model), then one tier up.
 - Live test runs (`claude -p --plugin-dir .`) need the demo repo OUTSIDE this folder: files under a loaded plugin dir count as sensitive, so every agent edit there is denied in `-p` mode (2026-11-04). The 2026-11-04 run used a two-package demo repo at `C:/Code/worktrees/foreman-demo` (4 haiku subtasks, 4/4 verified, 0.92 USD, 0.90 of it the Opus main session). From the Desktop app, `claude -p` has to run in a terminal tab (Desktop-managed Bedrock credentials refuse a Bash child).
 
 ## Repo-specific rules
