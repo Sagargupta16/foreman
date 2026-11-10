@@ -1,8 +1,9 @@
 {
-  "ladder": ["haiku", "sonnet", "opus"],
+  "ladder": ["haiku", "sonnet", "opus", "fable"],
   "models": ["haiku", "sonnet", "opus", "fable"],
   "efforts": ["low", "medium", "high", "xhigh", "max"],
   "max_wave": 10,
+  "max_top": 2,
   "profiles": {
     "read": "Read, Grep, Glob, Bash",
     "research": "Read, Grep, Glob, Bash, WebFetch, WebSearch",
@@ -80,6 +81,14 @@
       "profile": "read",
       "writes": false,
       "what": "reproduce a failure, find the root cause, name the fix and the files it touches"
+    },
+    "solve": {
+      "agent": "foreman:specialist",
+      "model": "fable",
+      "effort": "high",
+      "profile": "edit",
+      "writes": true,
+      "what": "one long, tangled unit end to end: work out the approach, make the change in the files it owns and prove it, where splitting would lose the thread"
     }
   }
 }

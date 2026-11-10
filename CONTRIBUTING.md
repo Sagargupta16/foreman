@@ -1,6 +1,6 @@
 # Contributing to foreman
 
-foreman is small on purpose: two skills, nine agents, seven templates, two
+foreman is small on purpose: two skills, ten agents, seven templates, two
 scripts. Changes that make plans safer to run or agents easier to route are
 the most welcome.
 

@@ -3,8 +3,9 @@ name: dispatch
 description: >-
   Splits a task into subtasks, hands each one to a foreman agent type (scout,
   mechanic, researcher, builder, writer, reviewer, verifier, architect,
-  debugger) and picks Haiku, Sonnet or Opus for each by the kind of work, then
-  runs them in dependency waves, integrates the results and verifies once.
+  debugger, specialist) and picks Haiku, Sonnet, Opus or Fable for each by the
+  kind of work, then runs them in dependency waves, integrates the results and
+  verifies once.
   Starts from task templates (feature, bugfix, refactor, migration, research,
   review, docs) and checks every plan with a script before any agent starts.
   Use when the user asks to split, break down, delegate, orchestrate or
@@ -28,15 +29,17 @@ to catch early.
 This skill runs its turn on Sonnet (`model: sonnet` above). By foreman's own
 routing rule, following a written procedure is Sonnet work; the judgement
 calls go to subtasks: `design` to the architect and `debug` to the debugger,
-both on Opus. In a measured run the coordinating session was 98% of the cost,
-so this is where the saving is.
+both on Opus, and a unit too tangled to split to the specialist on Fable. In
+a measured run the coordinating session was 98% of the cost, so this is where
+the saving is.
 
 Task: $ARGUMENTS
 
 ## Read first
 
 - [references/routing.md](references/routing.md): kinds of work, when to move
-  a subtask up or down a model tier, the failure ladder
+  a subtask up or down a model tier, what the top tier is for, the failure
+  ladder
 - [references/decompose.md](references/decompose.md): how to split, file
   ownership, waves, the plan JSON fields
 - [references/briefs.md](references/briefs.md): the brief each agent gets,
@@ -63,6 +66,12 @@ library only). The commands below say `python3`; on Windows use `python` or
 | fewer than about five tool calls in total | the briefs cost more than the work |
 | each part needs the previous part's full context | handoffs lose the detail that matters |
 | you could not tell a wrong answer from a right one | an unchecked agent result is a guess |
+
+   One unit, but hard (a root cause nobody has reproduced, a design that
+   cannot be undone, a long chain where each step needs the last): do not
+   do it on this turn's model. Plan it as a single `solve` subtask for the
+   specialist, check it and launch it. This turn runs on Sonnet, and that
+   work is what the top tier is for.
 
    More than 20 subtasks, or the user asked for a workflow ("use a
    workflow", "orchestrate this"): plan and check as usual, then compile the
@@ -105,7 +114,9 @@ python3 "${CLAUDE_SKILL_DIR}/scripts/plan.py" routes
    Keep the default unless a signal in
    [references/routing.md](references/routing.md) moves the subtask a tier
    up or down. Any change of agent or model gets a `why` field in the
-   subtask, one line.
+   subtask, one line. Fable is the top tier and the exception: at most two
+   subtasks in a plan, for a unit that cannot be split (`solve`) or work
+   that already beat opus.
 
 5. **Check** the plan and show the user the table it prints:
 
@@ -125,10 +136,24 @@ EOF
    one Agent call each, with `subagent_type` set to the subtask's agent
    (`foreman:builder`), `model` set to its model, `description` set to its
    id, and the brief from [references/briefs.md](references/briefs.md) as the
-   prompt. Launch in the foreground: do not set `run_in_background`. The
-   skill's Sonnet model holds only for the current turn, and a background
-   wave's results arrive in a new turn on the session's model. In a measured
-   run that moved integration onto Opus and cost more than the agents.
+   prompt. Set `effort` on the call only when it differs from the agent's
+   own: a rerun at `high`, or an `effort` the plan changed.
+
+   Where the reports come back decides which model integrates them, because
+   this skill's Sonnet model holds only for the current turn:
+
+   - **The Agent call returns the agent's report** (`claude -p`, the Agent
+     SDK, or a session with fork mode off): integrate it in this turn.
+   - **The Agent call returns only that the agent was launched.**
+     Interactive terminal, VS Code and desktop sessions start subagents in
+     the background by default, and their reports arrive as notifications
+     in later turns, which run on the session's model. In a measured run
+     that moved integration onto Opus and cost more than the agents. Do not
+     poll, relaunch or guess a result: end the turn with the plan table and
+     one line saying the wave is running, and continue from step 7 when the
+     reports arrive. Tell the user once that integration here runs on the
+     session's model, and that `/model sonnet` for the run, or
+     `CLAUDE_CODE_FORK_SUBAGENT=0` in settings, keeps it on Sonnet.
 
 7. **Integrate the wave** per [references/integrate.md](references/integrate.md):
    read every return block, check that changed paths sit inside each
@@ -144,8 +169,9 @@ EOF
 
 10. **Log the run, before the report.** The report is your last message, so
     a step after it gets skipped. Add each subtask's outcome to the plan
-    JSON (`status`, `attempts`, `final_model`, `verified`, and `tokens` and
-    `duration_ms` when the Agent result showed them) plus `"coordinator"`:
+    JSON (`status`, `attempts`, `final_model`, `final_effort`, `verified`,
+    and `tokens` and `duration_ms` when the Agent result showed them) plus
+    `"coordinator"`:
     the model you are running on, and append it to the run log:
 
 ```bash
@@ -185,7 +211,9 @@ open: <what is left, or none>
 - Put a secret's value in a brief; name it by its variable.
 - Tell an agent which model tier it runs on; describe the task instead.
 - Launch more than `max_wave` (10) agents in one message; split the wave.
-- Relaunch a subtask a third time; do it inline and say why.
+- Rerun a subtask on the same model at the same effort, or launch it a third
+  time.
+- Send work to fable that a brief could spell out, or to get past a refusal.
 
 ## Sources
 
@@ -200,3 +228,14 @@ precise routine work, larger ones for ambiguity, move up only after a real
 try fails). Prior art studied, nothing copied: VoltAgent
 awesome-claude-code-subagents `agent-organizer` (MIT, plan-only organizer)
 and wshobson/agents (MIT, model per agent file).
+
+Read 2026-11-10, ideas paraphrased: code.claude.com docs `model-config.md`
+(what Fable is for, the fable alias, safety-classifier fallback, usage
+credits) and `sub-agents.md` (subagents start in the background in
+interactive sessions, fork mode, the per-call `effort`); platform.claude.com
+docs `about-claude/models/optimizing-for-cost-and-intelligence` (rerun
+failures at higher effort, when delegation pays, Fable as orchestrator) and
+`about-claude/pricing`; claude.com blog "Choosing a Claude model and effort
+level in Claude Code" (did it not try hard enough, or did it not know
+enough); the Claude Code changelog for 2.1.292, 2.1.302 and 2.1.321.
+wshobson/agents `docs/architecture.md` (MIT) for an opt-in tier above Opus.

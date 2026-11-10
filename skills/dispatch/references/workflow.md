@@ -35,11 +35,15 @@ The script it writes:
   block (`id`, `status`, `changed`, `result`, `verified`, `open`)
 - passes each subtask the results of the subtasks it waits for, cut to 2,000
   characters each (it logs every cut)
-- applies the failure ladder in code: a `failed` or `partial` result is
-  retried once, one tier up, with the reason in the brief; `blocked` is not
-  retried, because it needs you
+- applies the failure ladder in code, one rerun per subtask with the reason
+  in the brief: a `partial` result below `high` effort reruns on the same
+  model at `high`; a `failed` one, or a `partial` one already at `high`,
+  reruns one tier up the project's ladder (opus to fable by default); on
+  the top tier there is no tier to move to, so that result stands; `blocked`
+  is never rerun, because it needs you
 - marks every subtask that waits on an unfinished one `skipped`
-- returns one result per subtask with `attempts` and `final_model`
+- returns one result per subtask with `attempts`, `final_model` and
+  `final_effort`
 
 ## Run
 
@@ -53,12 +57,15 @@ in `/workflows`. When it returns:
    compile again. A relaunch with the same script returns finished agents
    from cache.
 3. Verify once, report, and log the run with the returned `attempts`,
-   `final_model` and `status` per subtask.
+   `final_model`, `final_effort` and `status` per subtask.
 
 ## Limits
 
 The runtime runs up to 16 agents at once by default, fewer on a machine with
 few CPUs (`CLAUDE_CODE_WORKFLOW_MAX_CONCURRENT_AGENTS` changes it, 1 to 256),
 and at most 1,000 agents per run. A script cannot read files or run commands; only
-its agents can. Source: code.claude.com docs `workflows.md`, read
-2026-11-04.
+its agents can. `CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL` (Claude Code 2.1.296
+and later) runs every workflow agent on one model; when a user sets it, the
+plan's per-subtask models have no effect and the report should say so.
+Source: code.claude.com docs `workflows.md`, read 2026-11-04, and the Claude
+Code changelog, read 2026-11-10.

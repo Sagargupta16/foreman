@@ -358,13 +358,18 @@ def test_workflow_uses_no_clock_or_randomness(tmp_path):
 
 
 def run_harness(
-    script: Path, fail_once: str = "", blocks: str = "", fail_always: str = "", throws: str = ""
+    script: Path,
+    fail_once: str = "",
+    blocks: str = "",
+    fail_always: str = "",
+    throws: str = "",
+    partial_once: str = "",
 ) -> dict:
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is not installed")
     out = subprocess.run(
-        [node, str(HARNESS), str(script), fail_once, blocks, fail_always, throws],
+        [node, str(HARNESS), str(script), fail_once, blocks, fail_always, throws, partial_once],
         capture_output=True,
         text=True,
         check=True,
@@ -482,3 +487,144 @@ def test_log_rejects_a_non_numeric_attempts_value(tmp_path):
     source.write_text(json.dumps({"subtasks": [sub("a", status="done", attempts=None)]}), "utf-8")
     code = plan.main(["log", str(source), "--log", str(tmp_path / "runs.jsonl")])
     assert code == 1
+
+
+# list fields, the top tier, the effort rerun
+
+
+def test_string_owns_and_after_count_as_one_entry():
+    report = report_for(sub("a"), sub("b", kind="implement", owns="src/x.ts", after="a"))
+    assert report["errors"] == []
+    assert report["subtasks"][1]["owns"] == ["src/x.ts"]
+    assert report["waves"] == [["a"], ["b"]]
+
+
+def test_check_prints_a_plan_with_numeric_ids(tmp_path, capsys):
+    source = tmp_path / "plan.json"
+    source.write_text(
+        json.dumps({"subtasks": [{**sub("x"), "id": 1}, sub("b", after=[1])]}), "utf-8"
+    )
+    code = plan.main(["check", str(source)])
+    assert code == 0
+    assert "| 2 | b |" in capsys.readouterr().out
+
+
+def test_fm003_kind_that_is_not_text():
+    report = report_for({**sub("a"), "kind": ["verify"]}, sub("b"))
+    assert "FM003" in codes(report["errors"])
+
+
+def test_solve_routes_to_the_specialist_on_the_top_tier():
+    report = report_for(sub("a", kind="solve", owns=["src/**"]), sub("b"))
+    assert report["errors"] == []
+    assert (report["subtasks"][0]["agent"], report["subtasks"][0]["model"]) == (
+        "foreman:specialist",
+        routing()["ladder"][-1],
+    )
+
+
+def test_fm012_one_top_tier_subtask_is_not_flagged():
+    report = report_for(sub("a", kind="solve", owns=["src/**"]))
+    assert "FM012" not in codes(report["warnings"])
+
+
+def test_fm015_more_than_max_top_on_the_top_tier():
+    many = [
+        sub(f"s-{n}", kind="solve", owns=[f"pkg{n}/**"]) for n in range(routing()["max_top"] + 1)
+    ]
+    report = report_for(*many)
+    assert "FM015" in codes(report["warnings"])
+    assert report["errors"] == []
+
+
+def test_fm015_counts_the_projects_own_top_tier(tmp_path):
+    # Arrange
+    ext = tmp_path / ".claude" / "foreman"
+    ext.mkdir(parents=True)
+    (ext / "routing.json").write_text(
+        json.dumps({"ladder": ["haiku", "sonnet", "opus"], "max_top": 1}), encoding="utf-8"
+    )
+    # Act
+    report = plan.check_plan(
+        {"subtasks": [sub("a", kind="design"), sub("b", kind="debug")]}, routing(tmp_path)
+    )
+    # Assert
+    assert any(w.startswith("FM015 2 on opus") for w in report["warnings"])
+
+
+def compile_ladder_plan(tmp_path: Path) -> Path:
+    source = tmp_path / "ladder.json"
+    out = tmp_path / "ladder.js"
+    subtasks = [
+        sub("design", kind="design"),
+        sub("build", kind="implement", owns=["src/a.ts"], after=["design"]),
+        sub("solve", kind="solve", owns=["src/b/**"], after=["design"]),
+    ]
+    source.write_text(json.dumps({"task": "t", "subtasks": subtasks}), encoding="utf-8")
+    assert plan.main(["--project", str(ROOT), "workflow", str(source), "--out", str(out)]) == 0
+    return out
+
+
+def test_workflow_opus_failure_reruns_on_fable(tmp_path):
+    result = run_harness(compile_ladder_plan(tmp_path), fail_once="design")
+    tries = [(c["model"], c["effort"]) for c in result["calls"] if c["id"] == "design"]
+    assert tries == [("opus", "high"), ("fable", "high")]
+    assert result["statuses"]["design"]["final_model"] == "fable"
+
+
+def test_workflow_partial_result_reruns_on_the_same_model_at_high_effort(tmp_path):
+    result = run_harness(compile_ladder_plan(tmp_path), partial_once="build")
+    tries = [(c["model"], c["effort"]) for c in result["calls"] if c["id"] == "build"]
+    assert tries == [("sonnet", "medium"), ("sonnet", "high")]
+    assert result["statuses"]["build"] == {"status": "done", "attempts": 2, "final_model": "sonnet"}
+    assert result["efforts"]["build"] == "high"
+
+
+def test_workflow_partial_result_at_high_effort_goes_a_tier_up(tmp_path):
+    result = run_harness(compile_ladder_plan(tmp_path), partial_once="design")
+    tries = [(c["model"], c["effort"]) for c in result["calls"] if c["id"] == "design"]
+    assert tries == [("opus", "high"), ("fable", "high")]
+
+
+def test_workflow_top_tier_failure_is_not_rerun(tmp_path):
+    result = run_harness(compile_ladder_plan(tmp_path), fail_always="solve")
+    assert [c["model"] for c in result["calls"] if c["id"] == "solve"] == ["fable"]
+    assert result["statuses"]["solve"] == {
+        "status": "failed",
+        "attempts": 1,
+        "final_model": "fable",
+    }
+
+
+def effort_reruns(tmp_path: Path, count: int) -> Path:
+    """Log `count` implement subtasks that finished on sonnet only after a rerun at high effort."""
+    log = tmp_path / "runs.jsonl"
+    source = tmp_path / "plan.json"
+    record = sub(
+        "a",
+        kind="implement",
+        owns=["a.py"],
+        status="done",
+        verified=True,
+        attempts=2,
+        final_effort="high",
+    )
+    source.write_text(json.dumps({"subtasks": [record, sub("b", status="done")]}), "utf-8")
+    for _ in range(count):
+        plan.main(["--project", str(tmp_path), "log", str(source), "--log", str(log)])
+    return log
+
+
+def test_log_records_effort_and_final_effort(tmp_path):
+    log = effort_reruns(tmp_path, 1)
+    first = json.loads(log.read_text(encoding="utf-8").splitlines()[0])
+    assert (first["effort"], first["final_effort"]) == ("medium", "high")
+
+
+def test_stats_effort_reruns_hint_effort_not_a_larger_model(tmp_path, capsys):
+    log = effort_reruns(tmp_path, 5)
+    capsys.readouterr()
+    plan.main(["--project", str(tmp_path), "stats", "--log", str(log)])
+    out = capsys.readouterr().out
+    assert "raise implement effort above medium" in out
+    assert "raise implement to opus" not in out

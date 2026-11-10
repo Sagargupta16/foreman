@@ -50,6 +50,7 @@ failed: the failures are what the stats are for. Per subtask, record:
 | `status` | `done`, `partial`, `blocked`, `failed`, `skipped`, or `inline` when you did it yourself after the ladder |
 | `attempts` | launches of this subtask, 1 when it ran once |
 | `final_model` | the model of the last attempt, when the ladder moved it |
+| `final_effort` | the effort of the last attempt, when the rerun only raised effort |
 | `verified` | `true` only when you checked the result yourself |
 | `tokens`, `duration_ms` | from the Agent result's usage, when it shows them |
 
@@ -64,8 +65,12 @@ template name.
 by kind and model: subtasks, done, escalated, verified, median tokens. Below
 the table it prints tune hints:
 
+- **raise effort** for a kind when more than 30% of its subtasks finished
+  only after a rerun on the same model at higher effort; that argues for
+  more effort, not a larger model
 - **raise** a kind one tier when, on its route's model, fewer than 70% of its
-  subtasks finished or more than 30% escalated
+  subtasks finished or more than 30% escalated to another model or needed a
+  second launch
 - **lower** a kind one tier when, one tier below its route, 90% or more
   finished and were verified
 
