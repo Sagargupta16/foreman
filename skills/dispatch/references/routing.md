@@ -154,5 +154,6 @@ A project can route a kind to its own agent, or add a kind, in
 ```
 
 Keys merge over the built-in route, so a partial entry keeps the rest. The
-same file can set `ladder`, `max_wave` and `max_top`. The `new-agent` skill
-writes routes for you (`scaffold.py register`).
+same file can set `ladder`, `max_wave` and `max_top`; the two limits are
+whole numbers, and anything else stops `plan.py` with FM016. The `new-agent`
+skill writes routes for you (`scaffold.py register`).

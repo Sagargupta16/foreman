@@ -64,13 +64,20 @@ reports come back decides which model integrates them:
 
 | session | agents run | integration runs on |
 | --- | --- | --- |
-| `claude -p`, Agent SDK | in the foreground; the turn waits | Sonnet |
-| interactive terminal, VS Code, desktop app | in the background by default; reports arrive in later turns | the session's model |
+| `claude -p`, Agent SDK | in the background unless the call asks to wait; dispatch asks (`run_in_background: false`), so the turn waits | Sonnet |
+| interactive terminal, VS Code, desktop app | in the background; reports arrive in later turns | the session's model |
+
+Agents start in the background everywhere. In `claude -p` and the Agent SDK
+the coordinator can wait for them, and since 0.3.1 dispatch asks it to. A
+0.3.0 run in `claude -p` (Claude Code 2.1.322) did not ask: all three agents
+started in the background and the turns after the wave ran on Opus. A 0.3.1
+run on the same version kept both of its waves in the foreground and every
+turn on Sonnet (four Sonnet subtasks, 0.61 USD in total).
 
 For an interactive run on Sonnet end to end, switch the session with
 `/model sonnet` first, or set `CLAUDE_CODE_FORK_SUBAGENT=0` so the turn can
 wait for its agents ([sub-agents docs](https://code.claude.com/docs/en/sub-agents.md#run-subagents-in-foreground-or-background),
-read 2026-11-10).
+read 2026-11-11).
 
 ## Run log and tune hints
 

@@ -30,6 +30,7 @@ check rules (E = error, exit 1; W = warning):
   FM013 W agent is neither a foreman agent nor named in a route
   FM014 W template hint (fan_out, skip_when) left in the plan
   FM015 W more than max_top subtasks on the top tier of the ladder
+  FM016 E project routing.json is not a JSON object, or max_wave or max_top is not a whole number
 
 An "after" entry matches a subtask id, or every id that starts with it plus "-"
 (after: ["build"] waits for build-api and build-ui). "owns", "reads" and "after" take a
@@ -70,16 +71,30 @@ def ext_dir(project: Path) -> Path:
     return project / ".claude" / "foreman"
 
 
+class RoutingError(ValueError):
+    """The project's .claude/foreman/routing.json cannot be used (FM016)."""
+
+
 def load_routing(project: Path) -> dict:
     routing = load_json(SKILL / "routing.json")
     extra = ext_dir(project) / "routing.json"
     if extra.is_file():
-        over = load_json(extra)
+        try:
+            over = load_json(extra)
+        except (OSError, json.JSONDecodeError) as exc:
+            raise RoutingError(f"{extra.as_posix()}: {exc}") from exc
+        if not isinstance(over, dict):
+            raise RoutingError(f"{extra.as_posix()}: not a JSON object")
         for kind, route in over.get("kinds", {}).items():
             routing["kinds"][kind] = {**routing["kinds"].get(kind, {}), **route}
         routing["ladder"] = over.get("ladder") or routing["ladder"]  # an empty ladder is no ladder
         for key in ("max_wave", "max_top"):
-            routing[key] = over.get(key, routing[key])
+            value = over.get(key, routing[key])
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise RoutingError(
+                    f"{extra.as_posix()}: {key} must be a whole number, got {value!r}"
+                )
+            routing[key] = value
     return routing
 
 
@@ -480,6 +495,8 @@ def cmd_log(project: Path, source: str, log_arg: str | None) -> int:
         stamp = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
         run = f"{stamp[:10]}-{uuid.uuid4().hex[:8]}"
         lines = log_lines(plan, load_routing(project), project, stamp, run)
+    except RoutingError:
+        raise
     except (OSError, json.JSONDecodeError, ValueError, TypeError, AttributeError) as exc:
         print(f"cannot log plan: {exc}")
         return 1
@@ -801,19 +818,23 @@ def main(argv: list[str] | None = None) -> int:
     p_wf.add_argument("--out", help="write the script here instead of stdout")
     args = parser.parse_args(argv)
     project = Path(args.project).resolve() if args.project else Path.cwd()
-    if args.cmd == "templates":
-        return cmd_templates(project)
-    if args.cmd == "routes":
-        return cmd_routes(project)
-    if args.cmd == "new":
-        return cmd_new(project, args.template, args.task)
-    if args.cmd == "log":
-        return cmd_log(project, args.plan, args.log)
-    if args.cmd == "stats":
-        return cmd_stats(project, args.log, args.all)
-    if args.cmd == "workflow":
-        return cmd_workflow(project, args.plan, args.out)
-    return cmd_check(project, args.plan, args.json)
+    try:
+        if args.cmd == "templates":
+            return cmd_templates(project)
+        if args.cmd == "routes":
+            return cmd_routes(project)
+        if args.cmd == "new":
+            return cmd_new(project, args.template, args.task)
+        if args.cmd == "log":
+            return cmd_log(project, args.plan, args.log)
+        if args.cmd == "stats":
+            return cmd_stats(project, args.log, args.all)
+        if args.cmd == "workflow":
+            return cmd_workflow(project, args.plan, args.out)
+        return cmd_check(project, args.plan, args.json)
+    except RoutingError as exc:
+        print(f"FM016 cannot use project routing: {exc}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":
