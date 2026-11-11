@@ -552,6 +552,63 @@ def test_fm015_counts_the_projects_own_top_tier(tmp_path):
     assert any(w.startswith("FM015 2 on opus") for w in report["warnings"])
 
 
+def project_with_routing(tmp_path: Path, text: str) -> Path:
+    ext = tmp_path / ".claude" / "foreman"
+    ext.mkdir(parents=True)
+    (ext / "routing.json").write_text(text, encoding="utf-8")
+    return tmp_path
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [("max_top", "2"), ("max_wave", "10"), ("max_top", True), ("max_wave", 2.5), ("max_top", None)],
+)
+def test_fm016_limit_that_is_not_a_whole_number(tmp_path, capsys, key, value):
+    # Arrange
+    project = project_with_routing(tmp_path, json.dumps({key: value}))
+    # Act
+    code = plan.main(["--project", str(project), "check", str(EXAMPLE)])
+    # Assert
+    err = capsys.readouterr().err
+    assert code == 1
+    assert err.startswith("FM016 ")
+    assert f"{key} must be a whole number" in err
+
+
+@pytest.mark.parametrize("text", ["{not json", "[]"])
+def test_fm016_routing_file_that_is_not_a_json_object(tmp_path, capsys, text):
+    # Arrange
+    project = project_with_routing(tmp_path, text)
+    # Act
+    code = plan.main(["--project", str(project), "routes"])
+    # Assert
+    assert code == 1
+    assert capsys.readouterr().err.startswith("FM016 ")
+
+
+def test_fm016_log_writes_nothing_when_the_routing_is_bad(tmp_path, capsys):
+    # Arrange
+    project = project_with_routing(tmp_path, json.dumps({"max_wave": "10"}))
+    done = tmp_path / "done.json"
+    done.write_text(json.dumps({"subtasks": [sub("a", status="done")]}), encoding="utf-8")
+    log = tmp_path / "runs.jsonl"
+    # Act
+    code = plan.main(["--project", str(project), "log", str(done), "--log", str(log)])
+    # Assert
+    assert code == 1
+    assert capsys.readouterr().err.startswith("FM016 ")
+    assert not log.exists()
+
+
+def test_project_whole_number_limits_are_used(tmp_path):
+    # Arrange
+    project = project_with_routing(tmp_path, json.dumps({"max_top": 1, "max_wave": 3}))
+    # Act
+    loaded = routing(project)
+    # Assert
+    assert (loaded["max_top"], loaded["max_wave"]) == (1, 3)
+
+
 def compile_ladder_plan(tmp_path: Path) -> Path:
     source = tmp_path / "ladder.json"
     out = tmp_path / "ladder.js"

@@ -104,7 +104,10 @@ or effort the Agent tool does not take (FM004), a changed agent or model
 without `why` (FM005), unknown `after` or a cycle (FM006), a read-only
 subtask that owns paths (FM007), a writing subtask that owns nothing
 (FM008), two subtasks in one wave owning the same path (FM009), no verify
-(FM010). Warnings: a wave wider than `max_wave` (FM011), a one-subtask plan
+(FM010), a project `routing.json` that is not a JSON object or whose
+`max_wave` or `max_top` is not a whole number (FM016, from every command
+that reads the routing).
+Warnings: a wave wider than `max_wave` (FM011), a one-subtask plan
 below the top tier (FM012), an agent no route names (FM013), a template hint
 left in (FM014), more than `max_top` subtasks on the top tier (FM015), two
 globs that may overlap (FM009).

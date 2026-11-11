@@ -134,19 +134,25 @@ EOF
 
 6. **Launch one wave.** Every subtask of the wave goes out in ONE message:
    one Agent call each, with `subagent_type` set to the subtask's agent
-   (`foreman:builder`), `model` set to its model, `description` set to its
+   (`foreman:builder`), `model` set to its model, `effort` set to its
+   effort when the Agent tool has that parameter, `description` set to its
    id, and the brief from [references/briefs.md](references/briefs.md) as the
-   prompt. Set `effort` on the call only when it differs from the agent's
-   own: a rerun at `high`, or an `effort` the plan changed.
+   prompt. Both values come from the checked plan, never from memory of the
+   agent file: a project route or a rerun changes them, and the agent file
+   does not know.
 
-   Where the reports come back decides which model integrates them, because
-   this skill's Sonnet model holds only for the current turn:
+   Agents start in the background unless the call asks to wait. Where the
+   reports come back decides which model integrates them, because this
+   skill's Sonnet model holds only for the current turn:
 
-   - **The Agent call returns the agent's report** (`claude -p`, the Agent
-     SDK, or a session with fork mode off): integrate it in this turn.
-   - **The Agent call returns only that the agent was launched.**
-     Interactive terminal, VS Code and desktop sessions start subagents in
-     the background by default, and their reports arrive as notifications
+   - **The Agent tool has a `run_in_background` parameter** (`claude -p`,
+     the Agent SDK, or a session with fork mode off): set it to `false` on
+     every call of the wave. Your next action depends on every report, so
+     each call waits and returns its agent's report, and you integrate in
+     this turn. Left unset, the agents start in the background here too.
+   - **It has no such parameter, or a call returns only that the agent was
+     launched.** Interactive terminal, VS Code and desktop sessions keep
+     subagents in the background, and their reports arrive as notifications
      in later turns, which run on the session's model. In a measured run
      that moved integration onto Opus and cost more than the agents. Do not
      poll, relaunch or guess a result: end the turn with the plan table and
@@ -239,3 +245,11 @@ failures at higher effort, when delegation pays, Fable as orchestrator) and
 level in Claude Code" (did it not try hard enough, or did it not know
 enough); the Claude Code changelog for 2.1.292, 2.1.302 and 2.1.321.
 wshobson/agents `docs/architecture.md` (MIT) for an opt-in tier above Opus.
+
+Read 2026-11-11, ideas paraphrased: code.claude.com docs `sub-agents.md`
+(a subagent starts in the background with nothing configured; `claude -p`
+and the Agent SDK can wait for one), `env-vars.md` (the subagent tool's
+`run_in_background` parameter) and `headless.md` (a `claude -p` run stays
+open for background subagents). Measured on Claude Code 2.1.322: a
+`claude -p` run that did not ask to wait launched its wave in the
+background and integrated on the session's model.

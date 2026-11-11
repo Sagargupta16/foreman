@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.3.1] - 2026-11-11
+
+- Fix: dispatch now waits for its wave in `claude -p` and the Agent SDK.
+  Agents start in the background unless the call asks to wait, there too. A
+  0.3.0 run in `claude -p` (Claude Code 2.1.322) started all three agents in
+  the background and finished on the session's model (Opus), though the docs
+  said the turn waits. Step 6 now sets `run_in_background: false` on every
+  Agent call when the tool has that parameter. Measured after the change on
+  the same version: two waves ran in the foreground, the reports came back
+  in the turn, and every turn ran on Sonnet (four Sonnet subtasks, 0.61 USD
+  in total). The README table, the skill and the repo CLAUDE.md now say what
+  was measured.
+- Fix: dispatch sets `effort` on every Agent call, taken from the checked
+  plan. It used to set it only when it differed from the agent's own, which
+  the coordinator cannot see: with a project route such as
+  `{"kinds": {"implement": {"effort": "high"}}}` the plan showed `high`
+  while the builder's file says `medium`, and nothing said the two differ.
+- Fix: a project `.claude/foreman/routing.json` whose `max_top` or
+  `max_wave` is not a whole number (`"max_top": "2"`) crashed `plan.py check`
+  with a `TypeError`. That, and a routing file that is not a JSON object, is
+  now FM016 with the file and the key named, from every command that reads
+  the routing.
+- Docs: the repo is public since 2026-11-11 and is its own marketplace.
+  `SECURITY.md` points at GitHub private vulnerability reporting beside the
+  email and lists the specialist among the agents that can edit files.
+
 ## [0.3.0] - 2026-11-10
 
 - Fable tier: the ladder is now haiku, sonnet, opus, fable. A tenth agent,
