@@ -1,0 +1,149 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="476" viewBox="0 0 880 476" role="img" aria-labelledby="fmhw-title fmhw-desc">
+<title id="fmhw-title">How foreman runs a task</title>
+<desc id="fmhw-desc">One foreman dispatch run, step by step. A request comes in and the feature template splits it into 6 subtasks: map, build-api, build-ui, docs, review and verify. plan.py check passes the plan with 3 waves before any agent starts. Each subtask goes to an agent on the model its kind of work needs: wave 1 runs the scout on Haiku; wave 2 runs two builders on Sonnet in parallel, and build-ui stops short, so it reruns once on Sonnet at higher effort (a subtask that is wrong after a real try goes one tier up, to Opus); wave 3 runs docs on Haiku and review and verify on Sonnet. Opus and Fable are not needed in this plan. The foreman then checks file ownership, runs the tests once and reads the full diff, and each outcome goes to the run log, which plan.py stats turns into tune hints.</desc>
+<style>.fmhw-s{font-family:'Segoe UI',-apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif;font-weight:500}.fmhw-m{font-family:ui-monospace,'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-weight:600}</style>
+<rect x="0.5" y="0.5" width="879" height="475" rx="14" fill="#0d1117" stroke="#656d76"/>
+<text class="fmhw-m" x="24" y="34" fill="#4493f8" font-size="11" letter-spacing="1.4">FOREMAN / HOW A TASK RUNS</text>
+<circle cx="600" cy="30" r="5.2" fill="none" stroke="#9198a1" stroke-width="1.2"/>
+<text class="fmhw-s" x="610" y="34" fill="#9198a1" font-size="11">queued</text>
+<circle cx="666" cy="30" r="5.6" fill="#4493f8"/><circle cx="666" cy="30" r="2" fill="#0d1117"/>
+<text class="fmhw-s" x="676" y="34" fill="#9198a1" font-size="11">running</text>
+<circle cx="732" cy="30" r="6" fill="#d29922"/><rect x="731.1" y="26.4" width="1.8" height="4.4" rx="0.9" fill="#0d1117"/><circle cx="732" cy="32.6" r="1" fill="#0d1117"/>
+<text class="fmhw-s" x="742" y="34" fill="#9198a1" font-size="11">rerun</text>
+<circle cx="798" cy="30" r="6" fill="#3fb950"/><path d="M795.1 30.1L797.2 32.2L801 27.7" fill="none" stroke="#0d1117" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+<text class="fmhw-s" x="808" y="34" fill="#9198a1" font-size="11">done</text>
+<rect x="24" y="50" width="128" height="26" rx="13" fill="#151b23"/>
+<rect x="164" y="50" width="128" height="26" rx="13" fill="#151b23"/>
+<path d="M156 59.5L159.5 63L156 66.5" fill="none" stroke="#9198a1" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="304" y="50" width="128" height="26" rx="13" fill="#151b23"/>
+<path d="M296 59.5L299.5 63L296 66.5" fill="none" stroke="#9198a1" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="444" y="50" width="128" height="26" rx="13" fill="#151b23"/>
+<path d="M436 59.5L439.5 63L436 66.5" fill="none" stroke="#9198a1" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="584" y="50" width="128" height="26" rx="13" fill="#151b23"/>
+<path d="M576 59.5L579.5 63L576 66.5" fill="none" stroke="#9198a1" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="724" y="50" width="128" height="26" rx="13" fill="#151b23"/>
+<path d="M716 59.5L719.5 63L716 66.5" fill="none" stroke="#9198a1" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+<g><animateTransform attributeName="transform" type="translate" values="0 0;0 0;140 0;140 0;280 0;280 0;420 0;420 0;560 0;560 0;700 0;700 0;0 0;0 0" keyTimes="0;0.08;0.088;0.18;0.188;0.26;0.268;0.72;0.728;0.82;0.828;0.968;0.976;1" dur="18s" repeatCount="indefinite"/><rect x="24" y="50" width="128" height="26" rx="13" fill="rgba(68,147,248,0.18)" stroke="#4493f8" stroke-width="1.6"/></g>
+<text class="fmhw-m" x="88" y="67" fill="#e6edf3" font-size="11" text-anchor="middle" letter-spacing="1">1 REQUEST</text>
+<text class="fmhw-m" x="228" y="67" fill="#e6edf3" font-size="11" text-anchor="middle" letter-spacing="1">2 PLAN</text>
+<text class="fmhw-m" x="368" y="67" fill="#e6edf3" font-size="11" text-anchor="middle" letter-spacing="1">3 CHECK</text>
+<text class="fmhw-m" x="508" y="67" fill="#e6edf3" font-size="11" text-anchor="middle" letter-spacing="1">4 WAVES</text>
+<text class="fmhw-m" x="648" y="67" fill="#e6edf3" font-size="11" text-anchor="middle" letter-spacing="1">5 VERIFY</text>
+<text class="fmhw-m" x="788" y="67" fill="#e6edf3" font-size="11" text-anchor="middle" letter-spacing="1">6 LOG</text>
+<rect x="24" y="92" width="232" height="320" rx="10" fill="#151b23"/>
+<text class="fmhw-m" x="36" y="112" fill="#9198a1" font-size="10.5" letter-spacing="1.2">PLAN</text>
+<rect x="268" y="92" width="440" height="320" rx="10" fill="#151b23"/>
+<text class="fmhw-m" x="280" y="112" fill="#9198a1" font-size="10.5" letter-spacing="1.2">ROUTE AND RUN</text>
+<rect x="720" y="92" width="136" height="320" rx="10" fill="#151b23"/>
+<text class="fmhw-m" x="732" y="112" fill="#9198a1" font-size="10.5" letter-spacing="1.2">VERIFY, LOG</text>
+<rect x="36" y="122" width="208" height="72" rx="8" fill="#0d1117" stroke="#656d76"/>
+<text class="fmhw-m" x="48" y="140" fill="#9198a1" font-size="10.5">request</text>
+<text class="fmhw-s" x="48" y="157" fill="#e6edf3" font-size="11.5">Add CSV export to the users</text>
+<text class="fmhw-s" x="48" y="172" fill="#e6edf3" font-size="11.5">API and a download button on</text>
+<text class="fmhw-s" x="48" y="187" fill="#e6edf3" font-size="11.5">the users page</text>
+<text class="fmhw-m" x="36" y="214" fill="#9198a1" font-size="11">template: feature</text>
+<text class="fmhw-m" x="44" y="239" fill="#e6edf3" font-size="11.5">map</text>
+<text class="fmhw-s" x="236" y="239" fill="#9198a1" font-size="11" text-anchor="end">locate</text>
+<text class="fmhw-m" x="44" y="261" fill="#e6edf3" font-size="11.5">build-api</text>
+<text class="fmhw-s" x="236" y="261" fill="#9198a1" font-size="11" text-anchor="end">implement</text>
+<text class="fmhw-m" x="44" y="283" fill="#e6edf3" font-size="11.5">build-ui</text>
+<text class="fmhw-s" x="236" y="283" fill="#9198a1" font-size="11" text-anchor="end">implement</text>
+<text class="fmhw-m" x="44" y="305" fill="#e6edf3" font-size="11.5">docs</text>
+<text class="fmhw-s" x="236" y="305" fill="#9198a1" font-size="11" text-anchor="end">mechanical</text>
+<text class="fmhw-m" x="44" y="327" fill="#e6edf3" font-size="11.5">review</text>
+<text class="fmhw-s" x="236" y="327" fill="#9198a1" font-size="11" text-anchor="end">review</text>
+<text class="fmhw-m" x="44" y="349" fill="#e6edf3" font-size="11.5">verify</text>
+<text class="fmhw-s" x="236" y="349" fill="#9198a1" font-size="11" text-anchor="end">verify</text>
+<g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.08;0.088;0.18;0.188;1" dur="18s" repeatCount="indefinite"/><g><animateTransform attributeName="transform" type="translate" values="0 0;0 0;0 22;0 22;0 44;0 44;0 66;0 66;0 88;0 88;0 110;0 110" keyTimes="0;0.103;0.111;0.116;0.124;0.129;0.137;0.142;0.15;0.155;0.163;1" dur="18s" repeatCount="indefinite"/><rect x="36" y="225" width="208" height="20" rx="5" fill="rgba(68,147,248,0.18)"/></g></g>
+<rect x="36" y="368" width="208" height="32" rx="8" fill="#0d1117" stroke="#656d76"/>
+<text class="fmhw-m" x="48" y="388" fill="#e6edf3" font-size="11.5">plan.py check</text>
+<g opacity="1"><animate attributeName="opacity" values="1;1;0;0;1;1" keyTimes="0;0.21;0.218;0.976;0.984;1" dur="18s" repeatCount="indefinite"/><text class="fmhw-m" x="232" y="388" fill="#9198a1" font-size="11.5" text-anchor="end">...</text></g>
+<g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.21;0.218;0.968;0.976;1" dur="18s" repeatCount="indefinite"/><text class="fmhw-m" x="232" y="388" fill="#3fb950" font-size="11.5" text-anchor="end">ok, 3 waves</text></g>
+<text class="fmhw-m" x="444" y="136" fill="#9198a1" font-size="10.5" text-anchor="middle">wave 1</text>
+<text class="fmhw-m" x="548" y="136" fill="#9198a1" font-size="10.5" text-anchor="middle">wave 2</text>
+<text class="fmhw-m" x="652" y="136" fill="#9198a1" font-size="10.5" text-anchor="middle">wave 3</text>
+<rect x="276" y="146" width="424" height="50" rx="6" fill="#1b222c"/>
+<text class="fmhw-s" x="284" y="165" fill="#e6edf3" font-size="12.5" font-weight="700">haiku</text>
+<text class="fmhw-s" x="284" y="179" fill="#9198a1" font-size="10.5">scout, mechanic</text>
+<rect x="276" y="200" width="424" height="80" rx="6" fill="#1b222c"/>
+<text class="fmhw-s" x="284" y="219" fill="#e6edf3" font-size="12.5" font-weight="700">sonnet</text>
+<text class="fmhw-s" x="284" y="233" fill="#9198a1" font-size="10.5">builder, writer</text>
+<text class="fmhw-s" x="284" y="246" fill="#9198a1" font-size="10.5">reviewer, verifier</text>
+<text class="fmhw-s" x="284" y="259" fill="#9198a1" font-size="10.5">researcher</text>
+<rect x="276" y="284" width="424" height="42" rx="6" fill="#1b222c"/>
+<text class="fmhw-s" x="284" y="303" fill="#e6edf3" font-size="12.5" font-weight="700">opus</text>
+<text class="fmhw-s" x="284" y="317" fill="#9198a1" font-size="10.5">architect, debugger</text>
+<rect x="276" y="330" width="424" height="42" rx="6" fill="#1b222c"/>
+<text class="fmhw-s" x="284" y="349" fill="#e6edf3" font-size="12.5" font-weight="700">fable</text>
+<text class="fmhw-s" x="284" y="363" fill="#9198a1" font-size="10.5">specialist</text>
+<path d="M396 146V384" fill="none" stroke="#656d76" stroke-width="1.3"/>
+<path d="M500 146V384" fill="none" stroke="#656d76" stroke-width="1.3"/>
+<path d="M604 146V384" fill="none" stroke="#656d76" stroke-width="1.3"/>
+<path d="M244 384H604" fill="none" stroke="#656d76" stroke-width="1.3"/>
+<path d="M548 265V292" fill="none" stroke="#656d76" stroke-width="1.3" stroke-dasharray="3 3"/>
+<path d="M544.5 290L548 293.5L551.5 290" fill="none" stroke="#9198a1" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+<text class="fmhw-s" x="548" y="306" fill="#9198a1" font-size="10.5" text-anchor="middle">failed:</text>
+<text class="fmhw-s" x="548" y="319" fill="#9198a1" font-size="10.5" text-anchor="middle">one tier up</text>
+<rect x="475.3" y="344" width="145.4" height="15" rx="4" fill="#1b222c"/>
+<text class="fmhw-s" x="548" y="355" fill="#9198a1" font-size="10.5" text-anchor="middle">not needed in this plan</text>
+<rect x="398" y="160" width="92" height="22" rx="6" fill="#0d1117" stroke="#656d76"/>
+<text class="fmhw-m" x="405" y="175.14" fill="#e6edf3" font-size="11.5">map</text>
+<g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.31;0.318;0.36;0.368;1" dur="18s" repeatCount="indefinite"/><rect x="398" y="160" width="92" height="22" rx="6" fill="rgba(68,147,248,0.18)" stroke="#4493f8" stroke-width="1.5"/><circle cx="487" cy="163" r="5.6" fill="#4493f8"/><circle cx="487" cy="163" r="2" fill="#0d1117"/></g>
+<g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.36;0.368;0.968;0.976;1" dur="18s" repeatCount="indefinite"/><rect x="398" y="160" width="92" height="22" rx="6" fill="rgba(63,185,80,0.14)" stroke="#3fb950" stroke-width="1.5"/><circle cx="487" cy="163" r="6" fill="#3fb950"/><path d="M484.1 163.1L486.2 165.2L490 160.7" fill="none" stroke="#0d1117" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></g>
+<rect x="502" y="214" width="92" height="22" rx="6" fill="#0d1117" stroke="#656d76"/>
+<text class="fmhw-m" x="509" y="229.14" fill="#e6edf3" font-size="11.5">build-api</text>
+<g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.425;0.433;0.5;0.508;1" dur="18s" repeatCount="indefinite"/><rect x="502" y="214" width="92" height="22" rx="6" fill="rgba(68,147,248,0.18)" stroke="#4493f8" stroke-width="1.5"/><circle cx="591" cy="217" r="5.6" fill="#4493f8"/><circle cx="591" cy="217" r="2" fill="#0d1117"/></g>
+<g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.5;0.508;0.968;0.976;1" dur="18s" repeatCount="indefinite"/><rect x="502" y="214" width="92" height="22" rx="6" fill="rgba(63,185,80,0.14)" stroke="#3fb950" stroke-width="1.5"/><circle cx="591" cy="217" r="6" fill="#3fb950"/><path d="M588.1 217.1L590.2 219.2L594 214.7" fill="none" stroke="#0d1117" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></g>
+<rect x="502" y="242" width="92" height="22" rx="6" fill="#0d1117" stroke="#656d76"/>
+<text class="fmhw-m" x="509" y="257.14" fill="#e6edf3" font-size="11.5">build-ui</text>
+<g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0;1;1;0;0" keyTimes="0;0.425;0.433;0.47;0.478;0.53;0.538;0.575;0.583;1" dur="18s" repeatCount="indefinite"/><rect x="502" y="242" width="92" height="22" rx="6" fill="rgba(68,147,248,0.18)" stroke="#4493f8" stroke-width="1.5"/><circle cx="591" cy="245" r="5.6" fill="#4493f8"/><circle cx="591" cy="245" r="2" fill="#0d1117"/></g>
+<g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.47;0.478;0.53;0.538;1" dur="18s" repeatCount="indefinite"/><rect x="502" y="242" width="92" height="22" rx="6" fill="rgba(210,153,34,0.18)" stroke="#d29922" stroke-width="1.5"/><circle cx="591" cy="245" r="6" fill="#d29922"/><rect x="590.1" y="241.4" width="1.8" height="4.4" rx="0.9" fill="#0d1117"/><circle cx="591" cy="247.6" r="1" fill="#0d1117"/></g>
+<g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.575;0.583;0.968;0.976;1" dur="18s" repeatCount="indefinite"/><rect x="502" y="242" width="92" height="22" rx="6" fill="rgba(63,185,80,0.14)" stroke="#3fb950" stroke-width="1.5"/><circle cx="591" cy="245" r="6" fill="#3fb950"/><path d="M588.1 245.1L590.2 247.2L594 242.7" fill="none" stroke="#0d1117" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></g>
+<rect x="606" y="160" width="92" height="22" rx="6" fill="#0d1117" stroke="#656d76"/>
+<text class="fmhw-m" x="613" y="175.14" fill="#e6edf3" font-size="11.5">docs</text>
+<g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.63;0.638;0.68;0.688;1" dur="18s" repeatCount="indefinite"/><rect x="606" y="160" width="92" height="22" rx="6" fill="rgba(68,147,248,0.18)" stroke="#4493f8" stroke-width="1.5"/><circle cx="695" cy="163" r="5.6" fill="#4493f8"/><circle cx="695" cy="163" r="2" fill="#0d1117"/></g>
+<g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.68;0.688;0.968;0.976;1" dur="18s" repeatCount="indefinite"/><rect x="606" y="160" width="92" height="22" rx="6" fill="rgba(63,185,80,0.14)" stroke="#3fb950" stroke-width="1.5"/><circle cx="695" cy="163" r="6" fill="#3fb950"/><path d="M692.1 163.1L694.2 165.2L698 160.7" fill="none" stroke="#0d1117" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></g>
+<rect x="606" y="214" width="92" height="22" rx="6" fill="#0d1117" stroke="#656d76"/>
+<text class="fmhw-m" x="613" y="229.14" fill="#e6edf3" font-size="11.5">review</text>
+<g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.63;0.638;0.69;0.698;1" dur="18s" repeatCount="indefinite"/><rect x="606" y="214" width="92" height="22" rx="6" fill="rgba(68,147,248,0.18)" stroke="#4493f8" stroke-width="1.5"/><circle cx="695" cy="217" r="5.6" fill="#4493f8"/><circle cx="695" cy="217" r="2" fill="#0d1117"/></g>
+<g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.69;0.698;0.968;0.976;1" dur="18s" repeatCount="indefinite"/><rect x="606" y="214" width="92" height="22" rx="6" fill="rgba(63,185,80,0.14)" stroke="#3fb950" stroke-width="1.5"/><circle cx="695" cy="217" r="6" fill="#3fb950"/><path d="M692.1 217.1L694.2 219.2L698 214.7" fill="none" stroke="#0d1117" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></g>
+<rect x="606" y="242" width="92" height="22" rx="6" fill="#0d1117" stroke="#656d76"/>
+<text class="fmhw-m" x="613" y="257.14" fill="#e6edf3" font-size="11.5">verify</text>
+<g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.63;0.638;0.7;0.708;1" dur="18s" repeatCount="indefinite"/><rect x="606" y="242" width="92" height="22" rx="6" fill="rgba(68,147,248,0.18)" stroke="#4493f8" stroke-width="1.5"/><circle cx="695" cy="245" r="5.6" fill="#4493f8"/><circle cx="695" cy="245" r="2" fill="#0d1117"/></g>
+<g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.7;0.708;0.968;0.976;1" dur="18s" repeatCount="indefinite"/><rect x="606" y="242" width="92" height="22" rx="6" fill="rgba(63,185,80,0.14)" stroke="#3fb950" stroke-width="1.5"/><circle cx="695" cy="245" r="6" fill="#3fb950"/><path d="M692.1 245.1L694.2 247.2L698 242.7" fill="none" stroke="#0d1117" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></g>
+<circle r="3.6" fill="#4493f8" opacity="0"><animateMotion path="M244 384H396V171H398" keyPoints="0;0;1;1" keyTimes="0;0.27;0.31;1" calcMode="linear" dur="18s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.27;0.278;0.316;0.324;1" dur="18s" repeatCount="indefinite"/></circle>
+<circle r="3.6" fill="#4493f8" opacity="0"><animateMotion path="M244 384H500V225H502" keyPoints="0;0;1;1" keyTimes="0;0.385;0.425;1" calcMode="linear" dur="18s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.385;0.393;0.431;0.439;1" dur="18s" repeatCount="indefinite"/></circle>
+<circle r="3.6" fill="#4493f8" opacity="0"><animateMotion path="M244 384H500V253H502" keyPoints="0;0;1;1" keyTimes="0;0.385;0.425;1" calcMode="linear" dur="18s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.385;0.393;0.431;0.439;1" dur="18s" repeatCount="indefinite"/></circle>
+<circle r="3.6" fill="#4493f8" opacity="0"><animateMotion path="M244 384H604V171H606" keyPoints="0;0;1;1" keyTimes="0;0.59;0.63;1" calcMode="linear" dur="18s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.59;0.598;0.636;0.644;1" dur="18s" repeatCount="indefinite"/></circle>
+<circle r="3.6" fill="#4493f8" opacity="0"><animateMotion path="M244 384H604V225H606" keyPoints="0;0;1;1" keyTimes="0;0.59;0.63;1" calcMode="linear" dur="18s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.59;0.598;0.636;0.644;1" dur="18s" repeatCount="indefinite"/></circle>
+<circle r="3.6" fill="#4493f8" opacity="0"><animateMotion path="M244 384H604V253H606" keyPoints="0;0;1;1" keyTimes="0;0.59;0.63;1" calcMode="linear" dur="18s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.59;0.598;0.636;0.644;1" dur="18s" repeatCount="indefinite"/></circle>
+<rect x="728" y="122" width="120" height="120" rx="8" fill="#0d1117" stroke="#656d76"/>
+<text class="fmhw-s" x="740" y="142" fill="#e6edf3" font-size="12" font-weight="700">verify once</text>
+<circle cx="746" cy="166" r="5.2" fill="none" stroke="#9198a1" stroke-width="1.2"/><g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.755;0.763;0.968;0.976;1" dur="18s" repeatCount="indefinite"/><circle cx="746" cy="166" r="6" fill="#3fb950"/><path d="M743.1 166.1L745.2 168.2L749 163.7" fill="none" stroke="#0d1117" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></g>
+<text class="fmhw-s" x="758" y="170" fill="#e6edf3" font-size="11">ownership</text>
+<circle cx="746" cy="190" r="5.2" fill="none" stroke="#9198a1" stroke-width="1.2"/><g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.775;0.783;0.968;0.976;1" dur="18s" repeatCount="indefinite"/><circle cx="746" cy="190" r="6" fill="#3fb950"/><path d="M743.1 190.1L745.2 192.2L749 187.7" fill="none" stroke="#0d1117" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></g>
+<text class="fmhw-s" x="758" y="194" fill="#e6edf3" font-size="11">tests, 1 run</text>
+<circle cx="746" cy="214" r="5.2" fill="none" stroke="#9198a1" stroke-width="1.2"/><g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.795;0.803;0.968;0.976;1" dur="18s" repeatCount="indefinite"/><circle cx="746" cy="214" r="6" fill="#3fb950"/><path d="M743.1 214.1L745.2 216.2L749 211.7" fill="none" stroke="#0d1117" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></g>
+<text class="fmhw-s" x="758" y="218" fill="#e6edf3" font-size="11">full diff</text>
+<path d="M788 242V258" fill="none" stroke="#656d76" stroke-width="1.3"/>
+<path d="M784.5 256L788 259.5L791.5 256" fill="none" stroke="#9198a1" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="728" y="262" width="120" height="110" rx="8" fill="#0d1117" stroke="#656d76"/>
+<text class="fmhw-s" x="740" y="282" fill="#e6edf3" font-size="12" font-weight="700">run log</text>
+<circle cx="746" cy="306" r="5.2" fill="none" stroke="#9198a1" stroke-width="1.2"/><g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.845;0.853;0.968;0.976;1" dur="18s" repeatCount="indefinite"/><circle cx="746" cy="306" r="6" fill="#3fb950"/><path d="M743.1 306.1L745.2 308.2L749 303.7" fill="none" stroke="#0d1117" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></g>
+<text class="fmhw-s" x="758" y="310" fill="#e6edf3" font-size="11">+6 lines</text>
+<circle cx="746" cy="330" r="5.2" fill="none" stroke="#9198a1" stroke-width="1.2"/><g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.865;0.873;0.968;0.976;1" dur="18s" repeatCount="indefinite"/><circle cx="746" cy="330" r="6" fill="#3fb950"/><path d="M743.1 330.1L745.2 332.2L749 327.7" fill="none" stroke="#0d1117" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></g>
+<text class="fmhw-s" x="758" y="334" fill="#e6edf3" font-size="11">stats, hints</text>
+<circle r="3.6" fill="#4493f8" opacity="0"><animateMotion path="M700 240H712V182H728" keyPoints="0;0;1;1" keyTimes="0;0.72;0.745;1" calcMode="linear" dur="18s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.72;0.728;0.751;0.759;1" dur="18s" repeatCount="indefinite"/></circle>
+<circle r="3.6" fill="#4493f8" opacity="0"><animateMotion path="M788 242V262" keyPoints="0;0;1;1" keyTimes="0;0.82;0.835;1" calcMode="linear" dur="18s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.82;0.828;0.841;0.849;1" dur="18s" repeatCount="indefinite"/></circle>
+<rect x="24" y="424" width="832" height="38" rx="10" fill="#151b23"/>
+<rect x="34" y="434" width="3" height="18" rx="1.5" fill="#4493f8"/>
+<g opacity="1"><animate attributeName="opacity" values="1;1;0;0;1;1" keyTimes="0;0.08;0.088;0.976;0.984;1" dur="18s" repeatCount="indefinite"/><text class="fmhw-s" x="46" y="447" fill="#e6edf3" font-size="13">A request comes in. A one-unit task is done inline, with no agents.</text></g>
+<g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.08;0.088;0.18;0.188;1" dur="18s" repeatCount="indefinite"/><text class="fmhw-s" x="46" y="447" fill="#e6edf3" font-size="13">The feature template splits it into 6 subtasks, each with the files it owns and one check.</text></g>
+<g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.18;0.188;0.26;0.268;1" dur="18s" repeatCount="indefinite"/><text class="fmhw-s" x="46" y="447" fill="#e6edf3" font-size="13">plan.py check runs before any agent starts: no shared files in a wave, no silent model changes.</text></g>
+<g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.26;0.268;0.375;0.383;1" dur="18s" repeatCount="indefinite"/><text class="fmhw-s" x="46" y="447" fill="#e6edf3" font-size="13">Wave 1: the scout maps the code on Haiku.</text></g>
+<g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.375;0.383;0.525;0.533;1" dur="18s" repeatCount="indefinite"/><text class="fmhw-s" x="46" y="447" fill="#e6edf3" font-size="13">Wave 2: two builders run in parallel on Sonnet, and build-ui stops short.</text></g>
+<g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.525;0.533;0.585;0.593;1" dur="18s" repeatCount="indefinite"/><text class="fmhw-s" x="46" y="447" fill="#e6edf3" font-size="13">A short stop reruns once on the same model at higher effort; a wrong answer goes one tier up.</text></g>
+<g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.585;0.593;0.71;0.718;1" dur="18s" repeatCount="indefinite"/><text class="fmhw-s" x="46" y="447" fill="#e6edf3" font-size="13">Wave 3: docs on Haiku, review and verify on Sonnet, all at once.</text></g>
+<g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.71;0.718;0.82;0.828;1" dur="18s" repeatCount="indefinite"/><text class="fmhw-s" x="46" y="447" fill="#e6edf3" font-size="13">The foreman checks every changed file against its owner, runs the tests once, reads the diff.</text></g>
+<g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.82;0.828;0.968;0.976;1" dur="18s" repeatCount="indefinite"/><text class="fmhw-s" x="46" y="447" fill="#e6edf3" font-size="13">Each outcome goes to the run log, and plan.py stats turns the log into tune hints.</text></g>
+</svg>

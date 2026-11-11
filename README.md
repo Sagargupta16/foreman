@@ -34,6 +34,18 @@ A task that is one unit of work is done inline: delegation costs tokens.
 
 ## How a task runs
 
+<picture>
+  <source media="(prefers-color-scheme: dark) and (min-width: 1012px)" srcset="docs/how-it-works/how-it-works-dark.svg">
+  <source media="(prefers-color-scheme: light) and (min-width: 1012px)" srcset="docs/how-it-works/how-it-works-light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/how-it-works/how-it-works-dark-mobile.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/how-it-works/how-it-works-light-mobile.svg">
+  <img alt="One foreman run of the example feature plan, step by step: request, plan, check, waves, verify, log. The feature template splits the request into 6 subtasks, and plan.py check passes it with 3 waves before any agent starts. Wave 1 runs the scout on Haiku. Wave 2 runs two builders on Sonnet in parallel; build-ui stops short and reruns once on Sonnet at higher effort, while a subtask that is wrong after a real try would go one tier up to Opus. Wave 3 runs docs on Haiku and review and verify on Sonnet. Opus and Fable are not needed in this plan. The foreman checks file ownership, runs the tests once, reads the full diff, and writes each outcome to the run log for tune hints." src="docs/how-it-works/how-it-works-dark-mobile.svg" width="880">
+</picture>
+
+The figure plays [examples/feature-plan.json](examples/feature-plan.json)
+as `plan.py check` routes it; the build-ui rerun is staged to show the
+failure ladder. `python scripts/how_it_works_svg.py` redraws all four files.
+
 1. **Qualify.** One file, a handful of tool calls, or parts that each need the
    previous part's full context: no agents.
 2. **Template.** Pick the closest of seven task templates.
@@ -215,7 +227,9 @@ skills/new-agent/      SKILL.md, assets/ (agent and plugin skeletons), reference
 examples/              a filled plan the checker passes
 tests/                 pytest suite, plus a Node harness that runs compiled Workflows against mocks
 evals/                 claude plugin eval cases for dispatch and new-agent
+docs/how-it-works/     the animated README figure, dark and light, desktop and phone
 scripts/check.py       repo gate: dashes, secrets, links, manifests, agents vs routing, templates
+scripts/how_it_works_svg.py  draws docs/how-it-works/ (standard library, deterministic)
 ```
 
 ## Develop
