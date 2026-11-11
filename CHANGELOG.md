@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.2] - 2026-11-11
+
+- Docs: "How a task runs" in the README opens with an animated figure of one
+  dispatch run: the request, the 6-subtask plan, the `plan.py check` gate,
+  three waves on the model ladder (Haiku, Sonnet, Opus, Fable), a rerun at
+  higher effort, verify once and the run log, with a caption for each beat.
+  It plays `examples/feature-plan.json` as the checker routes it. Four
+  self-contained SVGs (dark and light, desktop and phone, about 25 KB each,
+  SMIL only, so it animates inside a README image) live in
+  `docs/how-it-works/`; `scripts/how_it_works_svg.py` draws them.
+
 ## [0.3.1] - 2026-11-11
 
 - Fix: dispatch now waits for its wave in `claude -p` and the Agent SDK.

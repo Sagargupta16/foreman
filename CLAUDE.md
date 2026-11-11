@@ -35,6 +35,7 @@ python skills/dispatch/scripts/plan.py stats --log .scratch/runs.jsonl
 python skills/new-agent/scripts/scaffold.py agent NAME --kind review --dest .scratch/agents
 python skills/new-agent/scripts/scaffold.py plugin NAME --dest .scratch/NAME --agent a:implement --skill
 python skills/new-agent/scripts/scaffold.py lint agents
+python scripts/how_it_works_svg.py   # redraw the README figure in docs/how-it-works/
 ```
 
 ## Test
@@ -62,6 +63,7 @@ claude plugin eval . --scaffold --allow-tools Bash Write Edit   # real models, c
 
 ## Gotchas
 
+- The README figure (`docs/how-it-works/*.svg`) is drawn from data written into `scripts/how_it_works_svg.py` (`SUBTASKS`, `TIMES`, the lane agent lists). A change to `routing.json`, the agent roster or `examples/feature-plan.json` needs the same change there and a rerun; never hand-edit the SVGs. Check them with svg-forge's `validate_svg.py --strict-contrast` (one `--theme` per half) and look at `frames.py` sheets: 0 errors and 0 warnings on all four files on 2026-11-11.
 - An agent's `model`, `effort` and `tools` must equal its routing.json kind and profile; `scripts/check.py` (FC009) fails otherwise. Change routing.json and the agent file together.
 - Plugin agents ignore `permissionMode`, `hooks`, `mcpServers` and `initialPrompt`; `claude plugin validate` does not warn about them (measured 2.1.312), `scaffold.py lint` does (FA005).
 - The Agent tool's per-call `model` beats the agent file's `model`; dispatch relies on that to route per subtask.

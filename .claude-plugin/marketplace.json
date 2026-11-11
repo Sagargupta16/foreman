@@ -12,7 +12,7 @@
       "name": "foreman",
       "source": "./",
       "description": "2 skills (dispatch, new-agent), 10 agent types with per-kind model and effort defaults, 7 task templates, a plan checker, a run log with tune hints, a plan-to-Workflow compiler and an agent-file linter.",
-      "version": "0.3.1",
+      "version": "0.3.2",
       "license": "MIT",
       "category": "productivity"
     }
