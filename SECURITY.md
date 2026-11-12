@@ -3,9 +3,12 @@
 ## What this plugin is
 
 foreman ships Markdown skills, ten agent definitions, JSON routing and
-templates, and two Python scripts (standard library only) that check plans
-and write agent files. It has no server, no network calls of its own and no
-hooks.
+templates, and Python scripts (standard library only) that check plans,
+write agent files and record agent runs. It has no server and no network
+calls of its own.
+One hook ships and is off by default: with the `capture_runs` option on, it
+appends the token counts and timings of finished foreman agents to a local
+file, reading nothing but the agent's own transcript.
 
 Realistic concerns:
 
@@ -35,4 +38,6 @@ first response within 7 days.
 - A plan the checker passes that lets two agents write the same file in one
   wave.
 - `scaffold.py` writing outside the destination it was given.
+- The capture hook storing prompt or result text, or writing outside its
+  log file.
 - Secrets committed to the repo.

@@ -68,6 +68,9 @@ open: <changes needed outside owns, assumptions made, or none>
 - Return a plan, a diagnosis or "next I would" in place of the change; when
   the goal cannot be met, say `blocked` or `failed` and why.
 - Report `done` while the `verify` check is red.
+- Delete, skip or loosen a test, assertion or check so that `verify`
+  passes, unless the goal names that change. A check that looks wrong goes
+  under `open` with status `blocked`.
 - Add, upgrade or remove a dependency unless the goal names it.
 - Put a secret, token or password literal in any file.
 - Commit, push, open a PR, or delete files outside `owns`.

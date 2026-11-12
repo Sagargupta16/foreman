@@ -1,5 +1,46 @@
 # Changelog
 
+## [0.4.0] - 2026-11-12
+
+- Writers may not weaken the check. builder, specialist and mechanic must
+  not delete, skip or loosen a test, assertion or check so that `verify`
+  passes, unless the goal names that change; the brief's `limits` line and
+  the compiled Workflow say the same. After every wave the foreman reads
+  the removed lines in test files, and a weakened check reopens the subtask.
+- Reviewer proof gate. A candidate becomes a finding only with an exact
+  line, a trigger, the surrounding guards read and a severity the ranking
+  supports. A critical or high finding carries its proof in a new `not
+  stopped by` column, or drops to medium. Findings of one pattern are one
+  row with a count, and a clean change gets `ship`.
+- Verifier: doubt is not a verdict. `confirmed` and `refuted` each need
+  output that shows it; everything else is `unreproducible`, which the
+  foreman no longer treats as a pass. A fix is re-checked by a new
+  verifier.
+- Optional capture hook (plugin option `capture_runs`, off by default). A
+  `SubagentStop` hook writes one line per finished foreman agent to
+  `~/.claude/foreman/agents.jsonl`: the model that ran, duration, tool
+  calls and token counts read from the agent's own transcript, never
+  prompt or result text. `plan.py log` matches those lines to subtasks by
+  the Agent call's description, which dispatch sets to the subtask id, and
+  fills `tokens`, `duration_ms`, the token split, `resolved_model`,
+  `shape` (whether the call waited), `launches` and an estimated
+  `cost_usd`, so the log no
+  longer depends on what the coordinator wrote down. Built against real
+  payloads on Claude Code 2.1.322: the stored `tokens` equals the
+  `totalTokens` the Agent tool reports.
+- Cost estimates. `routing.json` carries `rates`, Anthropic's list prices
+  for the four routed models read 2026-11-12, and a project can replace
+  them. `plan.py stats` shows the estimated cost of one verified result
+  per kind and model.
+- `plan.py check` prints an `effort` column, and dispatch takes `model` and
+  `effort` for every Agent call from that table. A live run showed the
+  coordinator leaving `effort` off because the table did not show it.
+- Run log and stats: an optional one-line `failure_reason` per subtask,
+  listed under `recent failures`; `stats --days N`; a `trend` line when a
+  pairing's done rate over the last 7 days moved 10 points or more from
+  its 30 day rate; a line naming the kinds with no logged run; the log
+  keeps its newest 5,000 lines.
+
 ## [0.3.2] - 2026-11-11
 
 - Docs: "How a task runs" in the README opens with an animated figure of one

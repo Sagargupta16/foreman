@@ -6,13 +6,20 @@
   plan.py new TEMPLATE --task "the user's words" [--project DIR]
   plan.py check PLAN.json|- [--project DIR] [--json]
   plan.py log PLAN.json|- [--log FILE]          plan with results -> one line per subtask
-  plan.py stats [--log FILE] [--all]            success per kind x model, with tune hints
+  plan.py stats [--log FILE] [--all] [--days N] success per kind x model, with tune hints
   plan.py workflow PLAN.json|- [--out FILE]     checked plan -> Workflow script
 
-The run log defaults to $FOREMAN_LOG, else ~/.claude/foreman/runs.jsonl. For `log`, each
-subtask carries its outcome: status (done, partial, blocked, failed, skipped, inline),
-attempts (default 1), final_model (default: model), final_effort (default: effort), verified
-(true when the foreman checked it), and optional tokens and duration_ms.
+The run log defaults to $FOREMAN_LOG, else ~/.claude/foreman/runs.jsonl, and keeps its newest
+5,000 lines. For `log`, each subtask carries its outcome: status (done, partial, blocked,
+failed, skipped, inline), attempts (default 1), final_model (default: model), final_effort
+(default: effort), verified (true when the foreman checked it), and optional tokens,
+duration_ms and failure_reason (one line on why it did not finish).
+
+When the capture hook is on (plugin option capture_runs), `log` also reads agents.jsonl beside
+the run log ($FOREMAN_CAPTURE_LOG) and fills what the plan left out for each subtask whose id
+matches a captured agent run (the Agent call's description, which dispatch sets to the id):
+tokens, duration_ms, the model that ran, whether the call waited, the token split and an
+estimated cost at the "rates" in routing.json.
 
 check rules (E = error, exit 1; W = warning):
   FM001 E plan is not a JSON object with a non-empty subtasks list
@@ -37,8 +44,8 @@ An "after" entry matches a subtask id, or every id that starts with it plus "-"
 list; a lone string counts as one entry.
 
 Project extensions: <project>/.claude/foreman/routing.json ("kinds" merged over the
-defaults, "ladder", "max_wave", "max_top") and <project>/.claude/foreman/templates/*.json
-(same name replaces).
+defaults, "ladder", "max_wave", "max_top", "rates") and
+<project>/.claude/foreman/templates/*.json (same name replaces).
 """
 
 from __future__ import annotations
@@ -60,6 +67,10 @@ PLUGIN = SKILL.parent.parent
 GLOB = "*?["
 STATUSES = ("done", "partial", "blocked", "failed", "skipped", "inline")
 MIN_SAMPLES = 5  # stats gives no tune hint for a kind x model with fewer logged subtasks
+MAX_LOG_LINES = 5000  # the run log keeps its newest lines
+CAPTURE_HOURS = 24  # a captured agent run older than this never joins a plan being logged
+TREND_STEP = 0.1  # a 7 day done rate this far from the 30 day one is reported as a trend
+SPLIT = ("input", "output", "cache_read", "cache_write_5m", "cache_write_1h")
 PLACEHOLDER = re.compile(r"__(?:META|TASK|SUBTASKS|WAVES|LADDER)__")
 
 
@@ -95,6 +106,11 @@ def load_routing(project: Path) -> dict:
                     f"{extra.as_posix()}: {key} must be a whole number, got {value!r}"
                 )
             routing[key] = value
+        rates = over.get("rates")
+        if isinstance(rates, dict):
+            base = routing.setdefault("rates", {})
+            models = {**base.get("models", {}), **(rates.get("models") or {})}
+            routing["rates"] = {**base, **rates, "models": models}
     return routing
 
 
@@ -411,6 +427,7 @@ def cmd_check(project: Path, source: str, as_json: bool) -> int:
             subs[sid]["kind"],
             subs[sid]["agent"],
             subs[sid]["model"],
+            subs[sid]["effort"],
             subs[sid]["owns"],
             subs[sid].get("after"),
             subs[sid].get("verify"),
@@ -428,7 +445,7 @@ def cmd_check(project: Path, source: str, as_json: bool) -> int:
         print(
             table(
                 rows,
-                ["wave", "id", "kind", "agent", "model", "owns", "after", "verify"],
+                ["wave", "id", "kind", "agent", "model", "effort", "owns", "after", "verify"],
             )
         )
     for label, found in (
@@ -483,28 +500,120 @@ def log_lines(plan: dict, routing: dict, project: Path, stamp: str, run: str) ->
             "verified": bool(raw.get("verified", False)),
         }
         line.update({k: raw[k] for k in ("tokens", "duration_ms") if isinstance(raw.get(k), int)})
+        reason = raw.get("failure_reason")
+        if isinstance(reason, str) and reason.strip():
+            line["failure_reason"] = " ".join(reason.split())[:200]
         if plan.get("coordinator"):
             line["coordinator"] = plan["coordinator"]
         lines.append(line)
     return lines
 
 
+def capture_file(log_path: Path) -> Path:
+    env = os.environ.get("FOREMAN_CAPTURE_LOG")
+    return Path(env) if env else log_path.with_name("agents.jsonl")
+
+
+def stamp_of(text: object) -> datetime.datetime | None:
+    """An aware datetime from a log line's ts, or None when it is missing or unreadable."""
+    try:
+        when = datetime.datetime.fromisoformat(str(text).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return when if when.tzinfo else when.astimezone()
+
+
+def load_capture(path: Path, project: Path, since: datetime.datetime) -> dict[str, list[dict]]:
+    """Captured agent runs of this project newer than `since`, by brief id, oldest first."""
+    found: dict[str, list[dict]] = defaultdict(list)
+    if not path.is_file():
+        return found
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        try:
+            rec = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        when = stamp_of(rec.get("ts")) if isinstance(rec, dict) else None
+        if not when or when <= since:
+            continue
+        # the hook writes the session folder as it saw it; Windows paths differ only by case
+        if os.path.normcase(str(rec.get("project"))) != os.path.normcase(project.as_posix()):
+            continue
+        if isinstance(rec.get("id"), str):
+            found[rec["id"]].append(rec)
+    return found
+
+
+def cost_of(rec: dict, rates: dict) -> float | None:
+    """Estimated USD of one captured run at the listed rates; None when its model has none."""
+    model = str(rec.get("model") or "")
+    rate = next((r for key, r in (rates.get("models") or {}).items() if key in model), None)
+    if not rate:
+        return None
+    try:
+        return sum(rec.get(f"{part}_tokens", 0) * rate[part] for part in SPLIT) / 1e6
+    except (KeyError, TypeError):
+        return None
+
+
+def fill_from_capture(lines: list[dict], captured: dict[str, list[dict]], rates: dict) -> int:
+    """Add what the hook recorded to each subtask it saw; the plan's own values win."""
+    filled = 0
+    for line in lines:
+        runs = captured.get(line["id"])
+        if not runs:
+            continue
+        filled += 1
+        last = runs[-1]
+        if isinstance(last.get("tokens"), int):
+            line.setdefault("tokens", last["tokens"])
+        spans = [r["duration_ms"] for r in runs if isinstance(r.get("duration_ms"), int)]
+        if spans:
+            line.setdefault("duration_ms", sum(spans))
+        line["launches"] = len(runs)
+        if last.get("model"):
+            line["resolved_model"] = last["model"]
+        if last.get("shape"):
+            line["shape"] = last["shape"]
+        for part in SPLIT:
+            key = f"{part}_tokens"
+            line[key] = sum(r[key] for r in runs if isinstance(r.get(key), int))
+        costs = [cost_of(r, rates) for r in runs]
+        if all(c is not None for c in costs):
+            line["cost_usd"] = round(sum(costs), 4)
+    return filled
+
+
 def cmd_log(project: Path, source: str, log_arg: str | None) -> int:
     try:
         plan = read_plan(source)
-        stamp = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
+        now = datetime.datetime.now().astimezone()
+        stamp = now.isoformat(timespec="seconds")
         run = f"{stamp[:10]}-{uuid.uuid4().hex[:8]}"
-        lines = log_lines(plan, load_routing(project), project, stamp, run)
+        routing = load_routing(project)
+        lines = log_lines(plan, routing, project, stamp, run)
     except RoutingError:
         raise
     except (OSError, json.JSONDecodeError, ValueError, TypeError, AttributeError) as exc:
         print(f"cannot log plan: {exc}")
         return 1
     path = log_file(log_arg)
+    # captured agent runs since this project's last logged run, and never older than a day
+    earlier = [stamp_of(r.get("ts")) for r in load_log(path, project)[0]]
+    since = max([t for t in earlier if t] + [now - datetime.timedelta(hours=CAPTURE_HOURS)])
+    captured = load_capture(capture_file(path), project, since)
+    filled = fill_from_capture(lines, captured, routing.get("rates") or {})
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8", newline="\n") as fh:
         fh.writelines(json.dumps(line) + "\n" for line in lines)
+    rows = path.read_bytes().splitlines(keepends=True)
+    if len(rows) > MAX_LOG_LINES:
+        path.write_bytes(b"".join(rows[-MAX_LOG_LINES:]))
     print(f"logged run {run}: {len(lines)} subtasks -> {path.as_posix()}")
+    if filled:
+        costs = [line["cost_usd"] for line in lines if "cost_usd" in line]
+        cost = f", est. {sum(costs):.2f} USD at list prices" if costs else ""
+        print(f"captured usage: {filled} of {len(lines)} subtasks{cost}")
     return 0
 
 
@@ -579,10 +688,37 @@ def tune_hints(groups: dict, routing: dict) -> list[str]:
     return hints
 
 
-def cmd_stats(project: Path, log_arg: str | None, all_projects: bool) -> int:
+def trend_notes(groups: dict, now: datetime.datetime) -> list[str]:
+    """Pairings whose done rate over the last 7 days moved away from their 30 day rate."""
+    notes = []
+    for (kind, model), recs in sorted(
+        groups.items(), key=lambda kv: (str(kv[0][0]), str(kv[0][1]))
+    ):
+        aged = [(now - t, r) for r in recs if r["status"] != "skipped" and (t := stamp_of(r["ts"]))]
+        week = [r for age, r in aged if age.days < 7]
+        month = [r for age, r in aged if age.days < 30]
+        if len(week) < 3 or len(month) < MIN_SAMPLES or len(week) == len(month):
+            continue
+        r7 = sum(r["status"] == "done" for r in week) / len(week)
+        r30 = sum(r["status"] == "done" for r in month) / len(month)
+        if abs(r7 - r30) >= TREND_STEP:
+            word = "worsening" if r7 < r30 else "improving"
+            notes.append(
+                f"{kind} on {model}: {round(100 * r7)}% done in the last 7 days ({len(week)})"
+                f" against {round(100 * r30)}% in 30 ({len(month)}), {word}"
+            )
+    return notes
+
+
+def cmd_stats(project: Path, log_arg: str | None, all_projects: bool, days: int | None) -> int:
     path = log_file(log_arg)
     records, bad = load_log(path, None if all_projects else project)
     scope = "all projects" if all_projects else project.as_posix()
+    now = datetime.datetime.now().astimezone()
+    if days:
+        scope += f" | last {days} days"
+        limit = datetime.timedelta(days=days)
+        records = [r for r in records if (t := stamp_of(r.get("ts"))) and now - t <= limit]
     if not records:
         print(f"no logged subtasks for {scope} in {path.as_posix()}")
         return 0
@@ -599,13 +735,28 @@ def cmd_stats(project: Path, log_arg: str | None, all_projects: bool) -> int:
         tokens = [r["tokens"] for r in recs if isinstance(r.get("tokens"), int)]
         median = f"{statistics.median(tokens) / 1000:.1f}k" if tokens else "-"
         pct = round(100 * done / len(recs))
-        rows.append([kind, model, len(recs), f"{done} ({pct}%)", moved, verified, median])
+        # what a verified result costs on this pairing, failed and rerun attempts included
+        costs = [r["cost_usd"] for r in recs if isinstance(r.get("cost_usd"), int | float)]
+        good = sum(r["status"] == "done" and bool(r["verified"]) for r in recs)
+        each = f"{sum(costs) / good:.3f}" if costs and good else "-"
+        rows.append([kind, model, len(recs), f"{done} ({pct}%)", moved, verified, median, each])
     runs = len({r["run"] for r in records})
     note = f", {bad} unreadable lines skipped" if bad else ""
     print(f"runs: {runs} | subtasks: {len(records)} | {scope} | log: {path.as_posix()}{note}")
     head = ["kind", "model", "subtasks", "done", "escalated", "verified", "median tokens"]
-    print(table(rows, head))
-    hints = tune_hints(groups, load_routing(project))
+    print(table(rows, [*head, "est. USD per verified"]))
+    routing = load_routing(project)
+    unlogged = [k for k in routing["kinds"] if not any(key[0] == k for key in groups)]
+    if unlogged:
+        print(f"no logged runs for: {', '.join(unlogged)}")
+    for line in trend_notes(groups, now):
+        print(f"trend: {line}")
+    failures = [r for r in records if r.get("failure_reason")]
+    if failures:
+        print("recent failures:")
+        for r in sorted(failures, key=lambda r: str(r.get("ts")), reverse=True)[:5]:
+            print(f"  {r['id']} ({r.get('kind')}, {r['final_model']}): {r['failure_reason']}")
+    hints = tune_hints(groups, routing)
     print(
         "tune hints (apply by hand, e.g. scaffold.py register <agent> --kind <kind> --model <m>):"
     )
@@ -657,7 +808,8 @@ function brief(s, note) {
     `verify:  ${s.verify}`,
     'limits:  no commit or push; no edits outside owns; no new dependencies unless the goal'
       + ' names one; no secret values in any file; no full test, lint or build run unless'
-      + ' verify names it',
+      + ' verify names it; no test or check deleted, skipped or loosened to pass verify'
+      + ' unless the goal names it',
     note ? `retry:   ${note}` : '',
     'return:  the structured fields id, status, changed, result, verified, open',
   ].filter(Boolean).join('\\n')
@@ -813,6 +965,7 @@ def main(argv: list[str] | None = None) -> int:
     p_stats = sub.add_parser("stats", help="success per kind x model from the run log")
     p_stats.add_argument("--log", help="log file (default: $FOREMAN_LOG or ~/.claude/foreman)")
     p_stats.add_argument("--all", action="store_true", help="every project, not just --project")
+    p_stats.add_argument("--days", type=int, help="only subtasks logged in the last N days")
     p_wf = sub.add_parser("workflow", help="compile a checked plan into a Workflow script")
     p_wf.add_argument("plan", help="plan JSON file, or - for stdin")
     p_wf.add_argument("--out", help="write the script here instead of stdout")
@@ -828,7 +981,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.cmd == "log":
             return cmd_log(project, args.plan, args.log)
         if args.cmd == "stats":
-            return cmd_stats(project, args.log, args.all)
+            return cmd_stats(project, args.log, args.all, args.days)
         if args.cmd == "workflow":
             return cmd_workflow(project, args.plan, args.out)
         return cmd_check(project, args.plan, args.json)

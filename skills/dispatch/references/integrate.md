@@ -9,15 +9,20 @@
    reverted (`git checkout -- <path>` for a tracked file the user did not
    change before the run) and that subtask is rerun with a tighter brief.
    Never revert a path the user changed before the run.
-3. **Spot-check claims.** For each `verified:` line, rerun the command or
+3. **Check the checks.** Read the removed lines in test files and the diff
+   of every check a subtask touched (`git diff -U0 -- <its owns>`). A
+   deleted test, a removed assertion, a new skip marker or a threshold
+   that got easier, when the goal did not ask for it, means the subtask is
+   not done: revert that part and rerun it with the reason in `inputs`.
+4. **Spot-check claims.** For each `verified:` line, rerun the command or
    open the cited file when it is cheap. What you did not check stays
    `(unverified)` in the report.
-4. **Carry results forward.** Put what the next wave needs into its
+5. **Carry results forward.** Put what the next wave needs into its
    `inputs`: the architect's lanes become builder briefs, the debugger's
    `fix owns` becomes the builder's `owns`, the scout's map becomes `reads`.
    When a result changes the plan (the design has four lanes, not two),
    update the plan and run `plan.py check` again before the next wave.
-5. **Handle failures** with the ladder in [routing.md](routing.md).
+6. **Handle failures** with the ladder in [routing.md](routing.md).
 
 ## Verify once at the end
 
@@ -25,7 +30,10 @@
   or linter the repo uses (its README, CONTRIBUTING or CI file says which).
 - Read the full diff (`git diff`) yourself.
 - Weigh the verifier subtask's verdicts. A refuted claim reopens the
-  subtask that made it.
+  subtask that made it, and `unreproducible` is not a pass: check that
+  claim yourself or report it `(unverified)`. After a fix, launch a new
+  verifier; the one that refuted the claim tends to hold on to its first
+  answer.
 - A red check is fixed here, in the main session. Relaunching every lane for
   one shared error wastes the whole run.
 
@@ -53,17 +61,33 @@ failed: the failures are what the stats are for. Per subtask, record:
 | `final_effort` | the effort of the last attempt, when the rerun only raised effort |
 | `verified` | `true` only when you checked the result yourself |
 | `tokens`, `duration_ms` | from the Agent result's usage, when it shows them |
+| `failure_reason` | one line on why a `failed`, `partial` or `blocked` subtask did not finish |
 
 The log lives at `~/.claude/foreman/runs.jsonl` (or `$FOREMAN_LOG`), one
 JSON line per subtask with the project path, so one file serves every
 project. It holds subtask ids and kinds, not the task's content beyond the
-template name.
+template name, and it keeps its newest 5,000 lines.
+
+With the plugin option `capture_runs` on, a hook records every finished
+foreman agent in `agents.jsonl` beside the run log: the model that ran,
+duration, tool calls and token counts, read from the agent's own
+transcript, never prompt or result text. `plan.py log` matches those lines
+to subtasks by the Agent call's `description`, which is why step 6 sets it
+to the subtask id, and fills `tokens`, `duration_ms`, the token split,
+`resolved_model`, `shape` (foreground or background), `launches` and
+`cost_usd`, an estimate at
+the list prices under `rates` in routing.json. Values in the plan win, and
+the `logged run` output adds a `captured usage` line.
 
 ## Read the stats
 
 `plan.py stats` groups the log for this project (`--all` for every project)
-by kind and model: subtasks, done, escalated, verified, median tokens. Below
-the table it prints tune hints:
+by kind and model: subtasks, done, escalated, verified, median tokens and,
+where the hook captured usage, the estimated cost of one verified result.
+`--days N` keeps the last N days. Below the table it names the kinds with
+no logged run, any pairing whose done rate over the last 7 days moved 10
+points or more from its 30 day rate, the five latest failure reasons, and
+the tune hints:
 
 - **raise effort** for a kind when more than 30% of its subtasks finished
   only after a rerun on the same model at higher effort; that argues for

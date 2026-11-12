@@ -4,6 +4,16 @@
   "efforts": ["low", "medium", "high", "xhigh", "max"],
   "max_wave": 10,
   "max_top": 2,
+  "rates": {
+    "read": "2026-11-12",
+    "unit": "USD per million tokens, Anthropic list prices; Haiku 5.5 at its rate for prompts up to 100,000 tokens",
+    "models": {
+      "haiku-5-5": { "input": 0.10, "output": 0.50, "cache_read": 0.01, "cache_write_5m": 0.125, "cache_write_1h": 0.20 },
+      "sonnet-5-5": { "input": 2, "output": 10, "cache_read": 0.10, "cache_write_5m": 2.50, "cache_write_1h": 4 },
+      "opus-5-5": { "input": 4, "output": 20, "cache_read": 0.20, "cache_write_5m": 5, "cache_write_1h": 8 },
+      "fable-5-2": { "input": 8, "output": 40, "cache_read": 0.20, "cache_write_5m": 10, "cache_write_1h": 16 }
+    }
+  },
   "profiles": {
     "read": "Read, Grep, Glob, Bash",
     "research": "Read, Grep, Glob, Bash, WebFetch, WebSearch",

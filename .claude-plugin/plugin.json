@@ -1,6 +1,6 @@
 {
   "name": "foreman",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "description": "Split any task into subtasks, hand each one to a predefined agent type and pick Haiku, Sonnet, Opus or Fable for it by the kind of work. Ten agents (scout, mechanic, researcher, builder, writer, reviewer, verifier, architect, debugger, specialist), seven task templates (feature, bugfix, refactor, migration, research, review, docs), a plan checker that catches overlapping file ownership and unjustified model picks before any agent starts, a run log whose stats suggest route changes, a compiler that turns big plans into Workflow scripts, and a scaffolder for new agents and agent plugins.",
   "author": {
     "name": "Sagar Gupta",
@@ -9,5 +9,13 @@
   "homepage": "https://github.com/Sagargupta16/foreman",
   "repository": "https://github.com/Sagargupta16/foreman",
   "license": "MIT",
+  "userConfig": {
+    "capture_runs": {
+      "type": "boolean",
+      "title": "Record foreman agent runs",
+      "description": "When on, a hook writes one line per finished foreman agent (model, duration, token counts; no prompt or result text) to ~/.claude/foreman/agents.jsonl, and the run log fills usage and an estimated cost from it. Off by default.",
+      "default": false
+    }
+  },
   "keywords": ["agents", "subagents", "orchestration", "delegation", "model-routing", "planning", "scaffold"]
 }

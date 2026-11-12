@@ -19,7 +19,8 @@ inputs:  <results from earlier subtasks: pasted text, or file paths>
 verify:  <the one check that proves it worked>
 limits:  no commit or push; no edits outside owns; no new dependencies
          unless the goal names one; no secret values in any file; no full
-         test, lint or build run unless verify names it
+         test, lint or build run unless verify names it; no test or check
+         deleted, skipped or loosened to pass verify unless the goal names it
 return:  the return block from your instructions
 ```
 
