@@ -25,7 +25,10 @@
   fills `tokens`, `duration_ms`, the token split, `resolved_model`,
   `shape` (whether the call waited), `launches` and an estimated
   `cost_usd`, so the log no
-  longer depends on what the coordinator wrote down. Built against real
+  longer depends on what the coordinator wrote down. A run counts once per
+  agent, is never joined to a second logged plan, and only the session that
+  ran the plan is used. A description that is not a short identifier is
+  not stored. Built against real
   payloads on Claude Code 2.1.322: the stored `tokens` equals the
   `totalTokens` the Agent tool reports.
 - Cost estimates. `routing.json` carries `rates`, Anthropic's list prices

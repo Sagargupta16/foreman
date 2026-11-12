@@ -523,11 +523,21 @@ def stamp_of(text: object) -> datetime.datetime | None:
     return when if when.tzinfo else when.astimezone()
 
 
-def load_capture(path: Path, project: Path, since: datetime.datetime) -> dict[str, list[dict]]:
-    """Captured agent runs of this project newer than `since`, by brief id, oldest first."""
+def load_capture(
+    path: Path, project: Path, since: datetime.datetime, used: set[str], ids: set[str]
+) -> tuple[dict[str, list[dict]], int]:
+    """Captured agent runs to join to a plan, by subtask id and oldest first, plus how many
+    recent lines the file holds at all.
+
+    A run counts once (the newest line per agent, since a resumed agent stops twice), never
+    again in a later logged plan (`used` holds the agents earlier log lines took), and only
+    from the session that ran this plan: the one behind the newest line with one of `ids`.
+    """
     found: dict[str, list[dict]] = defaultdict(list)
+    recent = 0
     if not path.is_file():
-        return found
+        return found, recent
+    runs: dict[str, dict] = {}
     for raw in path.read_text(encoding="utf-8").splitlines():
         try:
             rec = json.loads(raw)
@@ -536,12 +546,19 @@ def load_capture(path: Path, project: Path, since: datetime.datetime) -> dict[st
         when = stamp_of(rec.get("ts")) if isinstance(rec, dict) else None
         if not when or when <= since:
             continue
+        recent += 1
         # the hook writes the session folder as it saw it; Windows paths differ only by case
         if os.path.normcase(str(rec.get("project"))) != os.path.normcase(project.as_posix()):
             continue
-        if isinstance(rec.get("id"), str):
-            found[rec["id"]].append(rec)
-    return found
+        agent = str(rec.get("agent_id") or f"line-{recent}")
+        if rec.get("id") in ids and agent not in used:
+            runs[agent] = rec
+    if runs:
+        session = max(runs.values(), key=lambda r: str(r.get("ts"))).get("session")
+        for rec in runs.values():
+            if rec.get("session") == session:
+                found[rec["id"]].append(rec)
+    return found, recent
 
 
 def cost_of(rec: dict, rates: dict) -> float | None:
@@ -571,6 +588,7 @@ def fill_from_capture(lines: list[dict], captured: dict[str, list[dict]], rates:
         if spans:
             line.setdefault("duration_ms", sum(spans))
         line["launches"] = len(runs)
+        line["agent_ids"] = [r["agent_id"] for r in runs if isinstance(r.get("agent_id"), str)]
         if last.get("model"):
             line["resolved_model"] = last["model"]
         if last.get("shape"):
@@ -599,21 +617,32 @@ def cmd_log(project: Path, source: str, log_arg: str | None) -> int:
         return 1
     path = log_file(log_arg)
     # captured agent runs since this project's last logged run, and never older than a day
-    earlier = [stamp_of(r.get("ts")) for r in load_log(path, project)[0]]
+    logged = load_log(path, project)[0]
+    earlier = [stamp_of(r.get("ts")) for r in logged]
     since = max([t for t in earlier if t] + [now - datetime.timedelta(hours=CAPTURE_HOURS)])
-    captured = load_capture(capture_file(path), project, since)
+    used = {a for r in logged for a in r.get("agent_ids") or []}
+    ids = {line["id"] for line in lines}
+    captured, recent = load_capture(capture_file(path), project, since, used, ids)
     filled = fill_from_capture(lines, captured, routing.get("rates") or {})
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8", newline="\n") as fh:
         fh.writelines(json.dumps(line) + "\n" for line in lines)
     rows = path.read_bytes().splitlines(keepends=True)
     if len(rows) > MAX_LOG_LINES:
-        path.write_bytes(b"".join(rows[-MAX_LOG_LINES:]))
+        # swap the trimmed copy in whole, so a reader never sees a half written log
+        tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+        tmp.write_bytes(b"".join(rows[-MAX_LOG_LINES:]))
+        os.replace(tmp, path)
     print(f"logged run {run}: {len(lines)} subtasks -> {path.as_posix()}")
     if filled:
         costs = [line["cost_usd"] for line in lines if "cost_usd" in line]
         cost = f", est. {sum(costs):.2f} USD at list prices" if costs else ""
         print(f"captured usage: {filled} of {len(lines)} subtasks{cost}")
+    elif recent:
+        print(
+            f"captured usage: 0 of {len(lines)} subtasks; {recent} recent agent runs are in the"
+            " capture file, none with this project and one of these ids"
+        )
     return 0
 
 
@@ -715,6 +744,9 @@ def cmd_stats(project: Path, log_arg: str | None, all_projects: bool, days: int 
     records, bad = load_log(path, None if all_projects else project)
     scope = "all projects" if all_projects else project.as_posix()
     now = datetime.datetime.now().astimezone()
+    if days is not None and days < 1:
+        print("--days takes a whole number of 1 or more", file=sys.stderr)
+        return 2
     if days:
         scope += f" | last {days} days"
         limit = datetime.timedelta(days=days)
@@ -736,9 +768,9 @@ def cmd_stats(project: Path, log_arg: str | None, all_projects: bool, days: int 
         median = f"{statistics.median(tokens) / 1000:.1f}k" if tokens else "-"
         pct = round(100 * done / len(recs))
         # what a verified result costs on this pairing, failed and rerun attempts included
-        costs = [r["cost_usd"] for r in recs if isinstance(r.get("cost_usd"), int | float)]
-        good = sum(r["status"] == "done" and bool(r["verified"]) for r in recs)
-        each = f"{sum(costs) / good:.3f}" if costs and good else "-"
+        priced = [r for r in recs if isinstance(r.get("cost_usd"), int | float)]
+        good = sum(r["status"] == "done" and bool(r["verified"]) for r in priced)
+        each = f"{sum(r['cost_usd'] for r in priced) / good:.3f}" if good else "-"
         rows.append([kind, model, len(recs), f"{done} ({pct}%)", moved, verified, median, each])
     runs = len({r["run"] for r in records})
     note = f", {bad} unreadable lines skipped" if bad else ""

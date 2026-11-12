@@ -77,7 +77,10 @@ to the subtask id, and fills `tokens`, `duration_ms`, the token split,
 `resolved_model`, `shape` (foreground or background), `launches` and
 `cost_usd`, an estimate at
 the list prices under `rates` in routing.json. Values in the plan win, and
-the `logged run` output adds a `captured usage` line.
+the `logged run` output adds a `captured usage` line. An agent run counts
+once (a resumed agent stops twice), is never joined to a second logged
+plan, and only runs from the session that ran this plan are used, so log
+each plan once and from the session that ran it.
 
 ## Read the stats
 

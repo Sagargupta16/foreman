@@ -155,6 +155,13 @@ def test_record_falls_back_to_the_id_line_of_the_brief(tmp_path):
     assert (line["id"], line["shape"]) == ("map-a", None)
 
 
+def test_record_never_stores_a_free_text_description(tmp_path):
+    data = payload(tmp_path)
+    meta = {"description": "Fix the login bug please", "requestShape": "foreground"}
+    (tmp_path / "agent-abc.meta.json").write_text(json.dumps(meta), encoding="utf-8")
+    assert capture.record(data)["id"] == "map-a"
+
+
 # main
 
 
@@ -197,6 +204,7 @@ def test_main_exits_clean_on_unreadable_input(tmp_path, monkeypatch):
 def test_append_keeps_only_the_newest_lines(tmp_path, monkeypatch):
     out = tmp_path / "agents.jsonl"
     monkeypatch.setattr(capture, "MAX_LINES", 2)
+    monkeypatch.setattr(capture, "TRIM_BYTES", 0)
     for n in range(4):
         capture.append(out, {"n": n})
     assert [json.loads(x)["n"] for x in out.read_text(encoding="utf-8").splitlines()] == [2, 3]

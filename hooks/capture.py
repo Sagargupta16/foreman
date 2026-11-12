@@ -21,6 +21,7 @@ import time
 from pathlib import Path
 
 MAX_LINES = 5000  # the capture file keeps its newest lines
+TRIM_BYTES = 1_000_000  # below this size the file cannot be over the cap, so skip the read
 MAX_BYTES = 16 * 1024 * 1024  # a transcript larger than this is skipped
 WAIT = 1.0  # the transcript is written asynchronously, so give the last turn time to land
 ON = {"1", "true", "yes", "on"}
@@ -46,6 +47,13 @@ def brief_id(content: object) -> str | None:
         if key.strip() == "id" and value.strip():
             return value.strip()[:128]
     return None
+
+
+def id_like(text: object) -> bool:
+    """True for a short identifier such as build-api: never a sentence, so never prompt text."""
+    if not isinstance(text, str) or not 0 < len(text) <= 64:
+        return False
+    return all(c.isalnum() or c in "._-" for c in text)
 
 
 def meta_of(transcript: Path) -> dict:
@@ -165,8 +173,9 @@ def record(payload: dict) -> dict | None:
         return None
     meta = meta_of(transcript)
     label = meta.get("description")
-    if isinstance(label, str) and label.strip():
-        summary["id"] = label.strip()[:128]
+    label = label.strip() if isinstance(label, str) else None
+    # dispatch sets the description to the subtask id; free text is never stored
+    summary["id"] = next((x for x in (label, summary["id"]) if id_like(x)), None)
     shape = meta.get("requestShape")
     effort = payload.get("effort")
     return {
@@ -185,9 +194,15 @@ def append(path: Path, line: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("ab") as fh:
         fh.write(json.dumps(line).encode("utf-8") + bytes([10]))
+    if path.stat().st_size < TRIM_BYTES:
+        return
     rows = path.read_bytes().splitlines(keepends=True)
-    if len(rows) > MAX_LINES:
-        path.write_bytes(b"".join(rows[-MAX_LINES:]))
+    # trim rarely and swap the file in whole, so a reader never sees it half written; a line
+    # another hook appends during the swap can be lost, which a usage log can afford
+    if len(rows) > MAX_LINES + MAX_LINES // 10:
+        tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+        tmp.write_bytes(b"".join(rows[-MAX_LINES:]))
+        os.replace(tmp, path)
 
 
 def main() -> int:
@@ -201,7 +216,7 @@ def main() -> int:
         line = record(payload)
         if line:
             append(capture_file(), line)
-    except (OSError, ValueError, TypeError, KeyError):
+    except (OSError, ValueError, TypeError, KeyError, RecursionError):
         return 0
     return 0
 

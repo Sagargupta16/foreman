@@ -163,6 +163,38 @@ def test_log_ignores_a_capture_from_another_project(tmp_path):
     assert "launches" not in lines_of(log)[1]
 
 
+def test_log_counts_a_resumed_agent_once(tmp_path):
+    first = captured(tmp_path, agent_id="x1", output_tokens=1000)
+    again = captured(tmp_path, agent_id="x1", output_tokens=2500)
+    capture(tmp_path, first, again)
+    _, log = log_plan(tmp_path, finished())
+    b = lines_of(log)[1]
+    assert (b["launches"], b["output_tokens"]) == (1, 2500)
+
+
+def test_log_never_reuses_an_agent_an_earlier_run_took(tmp_path):
+    capture(tmp_path, captured(tmp_path, agent_id="x1"))
+    log_plan(tmp_path, finished())
+    # the same agent again, on a line dated after that run was logged
+    capture(tmp_path, captured(tmp_path, agent_id="x1", ts=ago(-0.001)))
+    _, log = log_plan(tmp_path, finished())
+    assert "launches" not in lines_of(log)[-1]
+
+
+def test_log_joins_only_the_session_that_ran_last(tmp_path):
+    old = captured(tmp_path, agent_id="x1", session="s-old", ts=ago(0.01))
+    new = captured(tmp_path, agent_id="x2", session="s-new")
+    capture(tmp_path, old, new)
+    _, log = log_plan(tmp_path, finished())
+    assert lines_of(log)[1]["agent_ids"] == ["x2"]
+
+
+def test_log_says_when_recent_runs_matched_nothing(tmp_path, capsys):
+    capture(tmp_path, captured(tmp_path, project="/somewhere/else"))
+    log_plan(tmp_path, finished())
+    assert "captured usage: 0 of 2 subtasks; 1 recent agent runs" in capsys.readouterr().out
+
+
 def test_log_reports_how_many_subtasks_had_captured_usage(tmp_path, capsys):
     capture(tmp_path, captured(tmp_path))
     log_plan(tmp_path, finished())
@@ -182,6 +214,14 @@ def test_project_rates_replace_a_listed_price(tmp_path):
 
 
 # stats
+
+
+def test_stats_rejects_days_below_one(tmp_path, capsys):
+    log = tmp_path / "runs.jsonl"
+    log.write_text(json.dumps(rec(tmp_path)), encoding="utf-8")
+    code = plan.main(["--project", str(tmp_path), "stats", "--log", str(log), "--days", "0"])
+    assert code == 2
+    assert "--days takes a whole number" in capsys.readouterr().err
 
 
 def test_stats_days_keeps_only_recent_runs(tmp_path, capsys):
@@ -215,6 +255,11 @@ def test_stats_shows_the_cost_of_a_verified_result(tmp_path, capsys):
     out = stats(tmp_path, capsys, records)
     assert "est. USD per verified" in out
     assert "| 0.300 |" in out
+
+
+def test_stats_cost_ignores_results_with_no_captured_cost(tmp_path, capsys):
+    records = [rec(tmp_path, cost_usd=0.2), rec(tmp_path), rec(tmp_path)]
+    assert "| 0.200 |" in stats(tmp_path, capsys, records)
 
 
 def test_stats_lists_the_latest_failure_reasons(tmp_path, capsys):
