@@ -201,8 +201,11 @@ def append(path: Path, line: dict) -> None:
     # another hook appends during the swap can be lost, which a usage log can afford
     if len(rows) > MAX_LINES + MAX_LINES // 10:
         tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
-        tmp.write_bytes(b"".join(rows[-MAX_LINES:]))
-        os.replace(tmp, path)
+        try:
+            tmp.write_bytes(b"".join(rows[-MAX_LINES:]))
+            os.replace(tmp, path)
+        except OSError:
+            tmp.unlink(missing_ok=True)  # Windows refuses while a reader holds the file; next time
 
 
 def main() -> int:

@@ -110,6 +110,21 @@ def test_log_keeps_only_its_newest_lines(tmp_path, monkeypatch):
     assert [r["id"] for r in lines_of(log)] == ["b", "a", "b"]
 
 
+def test_log_survives_a_trim_it_cannot_swap_in(tmp_path, monkeypatch):
+    # Arrange: Windows refuses the swap while another process holds the log open
+    def refuse(src, dst):
+        raise PermissionError("held open")
+
+    monkeypatch.setattr(plan, "MAX_LOG_LINES", 1)
+    monkeypatch.setattr(plan.os, "replace", refuse)
+    # Act
+    code, log = log_plan(tmp_path, finished())
+    # Assert
+    assert code == 0
+    assert len(lines_of(log)) == 2
+    assert not list(tmp_path.glob("*.tmp"))
+
+
 def test_log_fills_missing_usage_from_a_captured_run(tmp_path):
     capture(tmp_path, captured(tmp_path))
     _, log = log_plan(tmp_path, finished())

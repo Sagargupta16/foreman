@@ -631,8 +631,11 @@ def cmd_log(project: Path, source: str, log_arg: str | None) -> int:
     if len(rows) > MAX_LOG_LINES:
         # swap the trimmed copy in whole, so a reader never sees a half written log
         tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
-        tmp.write_bytes(b"".join(rows[-MAX_LOG_LINES:]))
-        os.replace(tmp, path)
+        try:
+            tmp.write_bytes(b"".join(rows[-MAX_LOG_LINES:]))
+            os.replace(tmp, path)
+        except OSError:
+            tmp.unlink(missing_ok=True)  # Windows refuses while a reader holds the log; next time
     print(f"logged run {run}: {len(lines)} subtasks -> {path.as_posix()}")
     if filled:
         costs = [line["cost_usd"] for line in lines if "cost_usd" in line]
