@@ -139,6 +139,18 @@ Agent call beat it, so the override is all a project needs.
 A subagent on a different model from the session does not inherit the
 session's effort level, which is why every foreman agent file sets `effort`.
 
+## Cost estimates
+
+`routing.json` carries `rates`: Anthropic's list prices per million tokens
+for the four routed models, with the date they were read. `plan.py log`
+uses them to estimate `cost_usd` for the subtasks the capture hook
+recorded, and `plan.py stats` divides by verified results. It is an
+estimate: a provider, a region surcharge or a plan can bill differently,
+Haiku 5.5 is priced at its rate for prompts up to 100,000 tokens, and a
+model with no entry gets no cost. A project adds or replaces a model under
+`rates.models` in its own routing file; the key is matched inside the
+model id (`sonnet-5-5` matches `claude-sonnet-5-5`).
+
 ## Adding or overriding a route
 
 A project can route a kind to its own agent, or add a kind, in

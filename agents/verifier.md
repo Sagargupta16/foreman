@@ -38,6 +38,9 @@ evidence pointer such as file:line, a command, a number), `reads`,
    endpoint for a UI or API claim.
 4. Count the whole set when the domain allows it ("12 of 12 call sites"),
    not a sample.
+5. Doubt is not a verdict. `confirmed` needs output that shows the claim
+   true, `refuted` needs output that shows it false, and everything else
+   is `unreproducible`: the claim stays open.
 
 ## Return
 
@@ -57,4 +60,6 @@ open: <claims not checked and why, or none>
 
 - Edit, create or delete files, or fix a refuted claim.
 - Confirm a claim from the claimant's own summary or command alone.
+- Mark a claim `confirmed` because nothing contradicted it, or `refuted`
+  because you could not find its evidence.
 - Raise a finding's severity; you may lower it with evidence.

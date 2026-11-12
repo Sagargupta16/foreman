@@ -60,9 +60,12 @@ claude plugin eval . --scaffold --allow-tools Bash Write Edit   # real models, c
 - `skills/new-agent/SKILL.md` -- agent and plugin scaffolding (`/foreman:new-agent`)
 - `skills/new-agent/scripts/scaffold.py` -- agent, plugin, register, lint (FA001-FA010)
 - `agents/*.md` -- the ten agent types
+- `hooks/hooks.json`, `hooks/capture.py` -- the optional SubagentStop hook that records agent runs (plugin option `capture_runs`, off by default)
 
 ## Gotchas
 
+- The capture hook was built against real payloads on Claude Code 2.1.322 (2026-11-12): SubagentStop carries `agent_type`, `agent_transcript_path` and `effort.level`; the agent transcript writes one line per content block with the same `message.id` and `usage`, so usage is counted once per id; the `tokens` it stores equals the `totalTokens` the Agent tool reports. The subtask id comes from `agent-<id>.meta.json` beside the transcript (`description`, `requestShape`), a file seen on 2.1.322 and not documented, with the brief's `id:` line as fallback: coordinators write free-form briefs, so the brief alone gave no id in a live run. Replay a saved payload to test it: `CLAUDE_PLUGIN_OPTION_CAPTURE_RUNS=true FOREMAN_CAPTURE_LOG=<file> python hooks/capture.py < payload.json`. In a `claude -p --plugin-dir .` run, turn the option on with `--settings` holding `{"pluginConfigs": {"foreman@inline": {"options": {"capture_runs": true}}}}`.
+- `rates` in routing.json are Anthropic list prices read on the date in `rates.read`. Re-read https://platform.claude.com/docs/en/about-claude/pricing before changing them, and bump the date.
 - The README figure (`docs/how-it-works/*.svg`) is drawn from data written into `scripts/how_it_works_svg.py` (`SUBTASKS`, `TIMES`, the lane agent lists). A change to `routing.json`, the agent roster or `examples/feature-plan.json` needs the same change there and a rerun; never hand-edit the SVGs. Check them with svg-forge's `validate_svg.py --strict-contrast` (one `--theme` per half) and look at `frames.py` sheets: 0 errors and 0 warnings on all four files on 2026-11-11.
 - An agent's `model`, `effort` and `tools` must equal its routing.json kind and profile; `scripts/check.py` (FC009) fails otherwise. Change routing.json and the agent file together.
 - Plugin agents ignore `permissionMode`, `hooks`, `mcpServers` and `initialPrompt`; `claude plugin validate` does not warn about them (measured 2.1.312), `scaffold.py lint` does (FA005).

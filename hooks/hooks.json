@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "SubagentStop": [
+      {
+        "matcher": "^foreman:",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ \"${CLAUDE_PLUGIN_OPTION_CAPTURE_RUNS:-}\" = \"true\" ] || exit 0; in=$(cat); f=\"${CLAUDE_PLUGIN_ROOT}/hooks/capture.py\"; printf '%s' \"$in\" | python3 \"$f\" 2>/dev/null || printf '%s' \"$in\" | python \"$f\" 2>/dev/null || true",
+            "shell": "bash",
+            "async": true
+          }
+        ]
+      }
+    ]
+  }
+}

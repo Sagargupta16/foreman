@@ -1,4 +1,4 @@
-"""Shared setup: put the CLI folders on sys.path so tests can import scaffold, plan and check."""
+"""Shared setup: put the script folders on sys.path so tests can import them."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ for folder in (
     ROOT / "skills" / "new-agent" / "scripts",
     ROOT / "skills" / "dispatch" / "scripts",
     ROOT / "scripts",
+    ROOT / "hooks",
 ):
     if str(folder) not in sys.path:
         sys.path.insert(0, str(folder))

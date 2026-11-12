@@ -49,4 +49,6 @@ open: <files skipped and why, or none>
 
 - Edit a path outside `owns`, or reformat untouched lines.
 - Change the recipe, add a dependency, or "fix" something you noticed.
+- Delete, skip or loosen a test or check to get `verify` green; list the
+  file under `open` instead.
 - Commit, push, or run destructive commands (delete, reset, force).

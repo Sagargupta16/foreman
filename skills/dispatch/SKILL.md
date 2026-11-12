@@ -135,11 +135,13 @@ EOF
 6. **Launch one wave.** Every subtask of the wave goes out in ONE message:
    one Agent call each, with `subagent_type` set to the subtask's agent
    (`foreman:builder`), `model` set to its model, `effort` set to its
-   effort when the Agent tool has that parameter, `description` set to its
-   id, and the brief from [references/briefs.md](references/briefs.md) as the
-   prompt. Both values come from the checked plan, never from memory of the
-   agent file: a project route or a rerun changes them, and the agent file
-   does not know.
+   effort, `description` set to its id exactly, and the brief from
+   [references/briefs.md](references/briefs.md) as the prompt. Model and
+   effort are columns of the table `plan.py check` printed; take them from
+   there, never from memory of the agent file: a project route or a rerun
+   changes them, and the agent file does not know. On Claude Code before
+   2.1.292 the Agent tool has no `effort`; leave it out there. The
+   description is how a captured run finds its subtask in the log.
 
    Agents start in the background unless the call asks to wait. Where the
    reports come back decides which model integrates them, because this
@@ -176,7 +178,8 @@ EOF
 10. **Log the run, before the report.** The report is your last message, so
     a step after it gets skipped. Add each subtask's outcome to the plan
     JSON (`status`, `attempts`, `final_model`, `final_effort`, `verified`,
-    and `tokens` and `duration_ms` when the Agent result showed them) plus
+    `failure_reason` in one line for a subtask that did not finish, and
+    `tokens` and `duration_ms` when the Agent result showed them) plus
     `"coordinator"`:
     the model you are running on, and append it to the run log:
 
@@ -209,7 +212,8 @@ open: <what is left, or none>
 
 ## Must not
 
-- Delegate a one-unit task, or launch an agent without `model` set.
+- Delegate a one-unit task, or launch an agent without `model` and `effort`
+  set.
 - Let two subtasks in one wave own the same path.
 - Let an agent commit, push, merge, publish, or delete outside its `owns`.
 - Accept "done" without reading the diff or the evidence it cites.
@@ -253,3 +257,14 @@ and the Agent SDK can wait for one), `env-vars.md` (the subagent tool's
 open for background subagents). Measured on Claude Code 2.1.322: a
 `claude -p` run that did not ask to wait launched its wave in the
 background and integrated on the session's model.
+
+Read 2026-11-12, ideas paraphrased, no text copied: affaan-m/ECC (MIT,
+d2ef268) `agents/code-reviewer.md` (proof for high-severity findings),
+`skills/loop-design-check/SKILL.md` (a done-criterion needs a boundary, or
+the check gets weakened), `skills/santa-method/SKILL.md` (fresh reviewers
+each round), `workflows/orch-review.workflow.js` (doubt never clears a
+finding), its cost-tracker hook and skill-evolution library (usage summed
+from the transcript, a capped log, a recent-against-longer trend).
+code.claude.com docs `hooks.md`
+(SubagentStop input) and `plugins/manifest-reference.md` (`userConfig`);
+platform.claude.com `about-claude/pricing` for the rates.

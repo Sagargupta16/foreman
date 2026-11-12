@@ -94,19 +94,40 @@ read 2026-11-11).
 ## Run log and tune hints
 
 ```bash
-python skills/dispatch/scripts/plan.py stats          # this project
-python skills/dispatch/scripts/plan.py stats --all    # every project
+python skills/dispatch/scripts/plan.py stats            # this project
+python skills/dispatch/scripts/plan.py stats --all      # every project
+python skills/dispatch/scripts/plan.py stats --days 30  # the last 30 days
 ```
 
 After each run the foreman appends one line per subtask to
 `~/.claude/foreman/runs.jsonl` (or `$FOREMAN_LOG`): kind, agent, model, the
 route's model, status, attempts, final model, whether it was verified,
-tokens. `stats` groups them by kind and model. Once a pairing has five or
+tokens, and one line on why a subtask did not finish. The log keeps its
+newest 5,000 lines. `stats` groups them by kind and model, names the kinds
+with no logged run, flags a pairing whose done rate over the last 7 days
+moved 10 points or more from its 30 day rate, and lists the latest failure
+reasons. Once a pairing has five or
 more subtasks it prints hints: raise a kind's effort when over 30% finished
 only after a rerun at higher effort, raise it a tier when under 70% finish on
 its route's model or over 30% escalate, lower it when 90% or more finish
 verified one tier below. Hints are suggestions; applying one is your call
 (`scaffold.py register`, or `.claude/foreman/routing.json`).
+
+### Record agent runs automatically
+
+Turn on the plugin option **Record foreman agent runs** (`capture_runs`, in
+`/config` or when you enable the plugin) and a `SubagentStop` hook writes
+one line per finished foreman agent to `~/.claude/foreman/agents.jsonl`:
+the model that ran, duration, tool calls and token counts, read from the
+agent's own transcript. It stores no prompt and no result text. `plan.py
+log` matches those lines to subtasks by the Agent call's description, which
+dispatch sets to the subtask id, and fills usage, whether the call waited and
+an estimated cost for each, so the log no longer depends on what the
+coordinator remembered to write down, and `stats` gains a cost per
+verified result. The estimate uses the list prices under `rates` in
+`routing.json` (read 2026-11-12); your provider or plan may bill
+differently. The hook is off by default, needs Python 3 on PATH and a POSIX
+shell (Git Bash on Windows), and does nothing without them.
 
 ## Big plans as Workflows
 
@@ -227,6 +248,7 @@ skills/new-agent/      SKILL.md, assets/ (agent and plugin skeletons), reference
 examples/              a filled plan the checker passes
 tests/                 pytest suite, plus a Node harness that runs compiled Workflows against mocks
 evals/                 claude plugin eval cases for dispatch and new-agent
+hooks/                 hooks.json and capture.py, the optional run capture hook
 docs/how-it-works/     the animated README figure, dark and light, desktop and phone
 scripts/check.py       repo gate: dashes, secrets, links, manifests, agents vs routing, templates
 scripts/how_it_works_svg.py  draws docs/how-it-works/ (standard library, deterministic)

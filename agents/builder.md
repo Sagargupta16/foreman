@@ -52,5 +52,8 @@ open: <changes needed outside owns, assumptions made, or none>
 
 - Edit a path outside `owns`, or format code you did not change.
 - Add, upgrade or remove a dependency unless the goal names it.
+- Delete, skip or loosen a test, assertion or check so that `verify`
+  passes, unless the goal names that change. A check that looks wrong goes
+  under `open` with status `blocked`.
 - Put a secret, token or password literal in any file.
 - Commit, push, open a PR, or delete files outside `owns`.
